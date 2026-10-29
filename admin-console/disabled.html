@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App turned off</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f7f8fa; color: #1b1f24; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    @media (prefers-color-scheme: dark) { body { background: #111418; color: #e6e9ee; } }
+    div { max-width: 420px; text-align: center; padding: 24px; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    p { margin: 0; opacity: .75; }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>This app is turned off</h1>
+    <p>An administrator of your organisation has turned <b id="app">this app</b> off. Ask them if you need it.</p>
+  </div>
+  <script>
+    const name = new URLSearchParams(location.search).get('app');
+    if (name) document.getElementById('app').textContent = name;
+  </script>
+</body>
+</html>

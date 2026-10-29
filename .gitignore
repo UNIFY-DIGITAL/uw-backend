@@ -1,0 +1,38 @@
+# Secrets: one set per server, never in git. Templates that are in git:
+# .env.example, .env.production.example, puter/config/config.example.json
+.env
+.env.*
+!.env.example
+!.env.production.example
+puter/config/config.json
+puter/tls/
+
+# Data and backups (back them up, don't version them)
+puter/data/
+backups/
+
+# Generated per server from .env by scripts/configure.sh (they name its domain)
+caddy/apps.caddy
+caddy/sites.caddy
+nginx/apps.conf
+
+# Built by the scripts on each server
+apps/*
+!apps/brand/
+chat-server/teamchat-worker.js
+chat-server/meetings-rooms.js
+puter/patches/
+# Mount points Docker creates inside puter/config
+puter/config/suite-apps.json
+puter/config/extensions/
+
+# Puter's source: cloned by scripts/build-desktop.sh at the revision of the pinned image
+vendor/
+
+# Caches, logs, scratch
+.npm-cache/
+node_modules/
+*.log
+.deploy-plan
+.chat-changed
+*.tgz

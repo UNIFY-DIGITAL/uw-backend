@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin</title>
+  <!-- Filled in by scripts/deploy-apps.sh: this server's SDK and the brand. -->
+  <script src="%SDK_URL%"></script>
+  <style>
+    :root {
+      --bg: #f7f8fa; --card: #fff; --text: #1b1f24; --muted: #667080; --line: #e3e6ea;
+      --accent: #2563eb; --accent-text: #fff; --focus: #93b4f5; --danger: #c62828; --ok: #1e7d3c; --warn-bg: #fff6e0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #111418; --card: #1a1e24; --text: #e6e9ee; --muted: #98a2ae; --line: #2a3038;
+              --accent: #4f8cff; --accent-text: #0b0d10; --focus: #35538c; --danger: #ff6b6b; --ok: #4cc47a; --warn-bg: #3a3220; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14.5px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    header { max-width: 1100px; margin: 0 auto; padding: 24px 24px 0; }
+    h1 { margin: 0 0 2px; font-size: 22px; }
+    .sub { margin: 0 0 16px; color: var(--muted); }
+    nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+    nav button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font: inherit; color: var(--muted); cursor: pointer; }
+    nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+    main { max-width: 1100px; margin: 0 auto; padding: 18px 24px 48px; }
+    .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+    input, select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    input:focus, select:focus, button:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+    input[type=search] { flex: 1; min-width: 220px; }
+    button.btn { font: inherit; border-radius: 8px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+    button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+    button.danger { color: var(--danger); }
+    button:disabled { opacity: .5; cursor: default; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { font-size: 12.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    tr:last-child td { border-bottom: 0; }
+    .who b { display: block; }
+    .who span { color: var(--muted); font-size: 13px; }
+    .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-right: 4px; }
+    .tag.on { color: var(--ok); border-color: currentColor; }
+    .tag.off { color: var(--danger); border-color: currentColor; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .app { display: flex; align-items: center; gap: 10px; }
+    .app img { width: 32px; height: 32px; border-radius: 8px; }
+    .muted { color: var(--muted); }
+    dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text); padding: 22px; width: min(440px, calc(100vw - 32px)); }
+    dialog::backdrop { background: rgba(0,0,0,.35); }
+    dialog h2 { margin: 0 0 14px; font-size: 18px; }
+    dialog label { display: block; margin: 0 0 12px; font-weight: 600; font-size: 13.5px; }
+    dialog label input { display: block; width: 100%; margin-top: 4px; font-weight: 400; }
+    dialog .hint { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+    dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .check { display: flex; gap: 8px; align-items: center; font-weight: 400 !important; }
+    .check input { width: auto; margin: 0; }
+    .secret { font: 15px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--warn-bg); padding: 10px 12px; border-radius: 8px; user-select: all; word-break: break-all; }
+    #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    #toast.show { opacity: 1; }
+    .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+    .denied { max-width: 520px; margin: 60px auto; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span>%BRAND_NAME%</span> Admin</h1>
+    <p class="sub" id="sub">People and apps of your organisation.</p>
+    <nav role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-people" aria-selected="true" aria-controls="people">People</button>
+      <button role="tab" id="tab-apps" aria-selected="false" aria-controls="apps">Apps</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="people" role="tabpanel" aria-labelledby="tab-people">
+      <div class="bar">
+        <input id="q" type="search" placeholder="Search people by name, username or email" aria-label="Search people">
+        <button class="btn primary" id="add-user" type="button">Add person</button>
+      </div>
+      <table aria-label="People">
+        <thead><tr><th>Person</th><th>Status</th><th>Last active</th><th><span class="muted" style="font-weight:400">Actions</span></th></tr></thead>
+        <tbody id="users"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section id="apps" role="tabpanel" aria-labelledby="tab-apps" hidden>
+      <div class="bar">
+        <span class="muted" style="flex:1">Turning an app off hides it from everyone and stops it opening; turning it on brings it back. The suite's own apps are deployed by DevOps; you can add other web apps here.</span>
+        <button class="btn primary" id="add-app" type="button">Add web app</button>
+      </div>
+      <table aria-label="Apps">
+        <thead><tr><th>App</th><th>Address</th><th>Status</th><th><span class="muted" style="font-weight:400">Actions</span></th></tr></thead>
+        <tbody id="applist"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </section>
+  </main>
+
+  <dialog id="user-dialog" aria-labelledby="user-dialog-title">
+    <form method="dialog" id="user-form">
+      <h2 id="user-dialog-title">Add a person</h2>
+      <label>Username <span class="hint">3–45 lower-case letters, digits or _</span>
+        <input name="username" required pattern="[a-z0-9_]{3,45}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label>Full name <span class="hint">shown to colleagues</span><input name="name" autocomplete="off"></label>
+      <label>Email <span class="hint" id="email-hint"></span><input name="email" type="email" autocomplete="off"></label>
+      <label>Password <span class="hint">leave empty for a temporary one, changed at first sign-in</span>
+        <input name="password" type="password" minlength="8" autocomplete="new-password"></label>
+      <label class="check"><input type="checkbox" name="admin"> Administrator</label>
+      <p class="hint" id="user-error" role="alert" style="color:var(--danger)"></p>
+      <div class="row"><button class="btn" value="cancel" type="button" data-close>Cancel</button><button class="btn primary" value="ok">Add</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="app-dialog" aria-labelledby="app-dialog-title">
+    <form method="dialog" id="app-form">
+      <h2 id="app-dialog-title">Add a web app</h2>
+      <label>Name <span class="hint">its short id: lower-case letters, digits and -</span>
+        <input name="name" required pattern="[a-z0-9][a-z0-9-]{1,62}" autocomplete="off"></label>
+      <label>Title<input name="title" required autocomplete="off"></label>
+      <label>Web address<input name="url" type="url" required placeholder="https://…" autocomplete="off"></label>
+      <label>Description<input name="description" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" name="adminOnly"> Administrators only</label>
+      <p class="hint" id="app-error" role="alert" style="color:var(--danger)"></p>
+      <div class="row"><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" value="ok">Add</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="secret-dialog" aria-labelledby="secret-title">
+    <h2 id="secret-title">Temporary password</h2>
+    <p id="secret-text"></p>
+    <p class="secret" id="secret-value"></p>
+    <p class="hint">Shown only now. They will be asked to choose their own password when they sign in.</p>
+    <div class="row"><button class="btn" type="button" id="copy-secret">Copy</button><button class="btn primary" type="button" data-close>Done</button></div>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const api = async (method, path, body) => {
+      const r = await fetch(`${puter.APIOrigin}${path}`, {
+        method, headers: { Authorization: `Bearer ${puter.authToken}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined, cache: 'no-store',
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw Object.assign(new Error(data.message || `Request failed (${r.status})`), { status: r.status, data });
+      return data;
+    };
+    const el = (tag, attrs = {}, ...kids) => {
+      const n = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === 'on') for (const [ev, fn] of Object.entries(v)) n.addEventListener(ev, fn);
+        else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
+      }
+      n.append(...kids.flat().filter((k) => k != null && k !== false));
+      return n;
+    };
+    const toast = (text) => { const t = $('#toast'); t.textContent = text; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2600); };
+    const when = (iso) => {
+      if (!iso) return 'never';
+      const d = new Date(iso), days = Math.floor((Date.now() - d) / 86400e3);
+      return days < 1 ? 'today' : days === 1 ? 'yesterday' : days < 30 ? `${days} days ago` : d.toLocaleDateString();
+    };
+    document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+
+    let me = null, users = [], apps = [], mailDomain = '';
+
+    // ---- tabs
+    const tabs = [['tab-people', 'people'], ['tab-apps', 'apps']];
+    for (const [tab, panel] of tabs) {
+      $('#' + tab).addEventListener('click', () => {
+        for (const [t, p] of tabs) { $('#' + t).setAttribute('aria-selected', String(t === tab)); $('#' + p).hidden = t !== tab; }
+        if (panel === 'apps') loadApps();
+      });
+    }
+
+    // ---- people
+    async function loadUsers() {
+      const body = await api('GET', '/unify/admin/users');
+      users = body.users; mailDomain = body.mailDomain;
+      renderUsers();
+    }
+
+    function renderUsers() {
+      const q = $('#q').value.trim().toLowerCase();
+      const shown = users.filter((u) => !q || `${u.name} ${u.username} ${u.email}`.toLowerCase().includes(q));
+      const tbody = $('#users');
+      tbody.replaceChildren();
+      if (!shown.length) { tbody.append(el('tr', {}, el('td', { colspan: 4, class: 'empty' }, users.length ? 'Nobody matches.' : 'No people yet.'))); return; }
+      for (const u of shown) {
+        const self = u.username === me;
+        const act = (label, fn, cls = '', why = '') => el('button', { class: `btn ${cls}`, type: 'button', disabled: !!why, title: why || false, 'aria-label': `${label} ${u.username}`, on: { click: fn } }, label);
+        tbody.append(el('tr', {},
+          el('td', { class: 'who' }, el('b', {}, u.name), el('span', {}, `${u.username} · ${u.email || 'no email address'}`)),
+          el('td', {},
+            u.disabled ? el('span', { class: 'tag off' }, 'Disabled') : el('span', { class: 'tag on' }, 'Active'),
+            u.admin ? el('span', { class: 'tag' }, 'Administrator') : null,
+            u.mustChangePassword ? el('span', { class: 'tag' }, 'Temporary password') : null),
+          el('td', { class: 'muted' }, when(u.lastActive)),
+          el('td', {}, el('div', { class: 'actions' },
+            act(u.disabled ? 'Enable' : 'Disable', () => patchUser(u, { disabled: !u.disabled }, u.disabled ? 'enabled' : 'disabled'), '',
+              self ? 'This is you' : (u.bootstrapAdmin && !u.disabled ? 'Set in config.json' : '')),
+            act(u.admin ? 'Remove admin' : 'Make admin', () => patchUser(u, { admin: !u.admin }, u.admin ? 'is no longer an administrator' : 'is now an administrator'), '',
+              self && u.admin ? 'This is you' : (u.bootstrapAdmin ? 'Set in config.json' : '')),
+            act('Reset password', () => resetPassword(u)),
+            act('Remove', () => removeUser(u), 'danger', self ? 'This is you' : (u.bootstrapAdmin ? 'Set in config.json' : ''))))));
+      }
+    }
+
+    async function patchUser(u, body, done) {
+      try { await api('PATCH', `/unify/admin/users/${encodeURIComponent(u.username)}`, body); toast(`${u.username} ${done}`); await loadUsers(); }
+      catch (e) { toast(e.message); }
+    }
+
+    function showSecret(text, value) {
+      $('#secret-text').textContent = text;
+      $('#secret-value').textContent = value;
+      $('#secret-dialog').showModal();
+    }
+    $('#copy-secret').addEventListener('click', () => navigator.clipboard?.writeText($('#secret-value').textContent).then(() => toast('Copied'), () => {}));
+
+    async function resetPassword(u) {
+      if (!confirm(`Reset the password of ${u.name} (${u.username})? They are signed out everywhere and get a temporary password.`)) return;
+      try {
+        const r = await api('PATCH', `/unify/admin/users/${encodeURIComponent(u.username)}`, { resetPassword: true });
+        showSecret(`New temporary password for ${u.username}:`, r.temporaryPassword);
+        await loadUsers();
+      } catch (e) { toast(e.message); }
+    }
+
+    async function removeUser(u) {
+      const typed = prompt(`Remove ${u.name} (${u.username}) and everything they own: files, mail, calendar? This cannot be undone.\n\nType the username to confirm:`);
+      if (typed === null) return;
+      if (typed.trim() !== u.username) { toast('Not removed: the username did not match'); return; }
+      try { await api('DELETE', `/unify/admin/users/${encodeURIComponent(u.username)}`); toast(`${u.username} removed`); await loadUsers(); }
+      catch (e) { toast(e.message); }
+    }
+
+    $('#q').addEventListener('input', renderUsers);
+    const userForm = $('#user-form');
+    userForm.username.addEventListener('input', () => { $('#email-hint').textContent = userForm.username.value ? `default: ${userForm.username.value}@${mailDomain}` : `default: <username>@${mailDomain}`; });
+    $('#add-user').addEventListener('click', () => { userForm.reset(); $('#user-error').textContent = ''; $('#email-hint').textContent = `default: <username>@${mailDomain}`; $('#user-dialog').showModal(); });
+    userForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = userForm;
+      try {
+        const r = await api('POST', '/unify/admin/users', {
+          username: f.username.value.trim(), name: f.name.value.trim(), email: f.email.value.trim() || undefined,
+          password: f.password.value || undefined, admin: f.admin.checked,
+        });
+        $('#user-dialog').close();
+        await loadUsers();
+        if (r.temporaryPassword) showSecret(`${r.user.username} (${r.user.email}) can sign in with this temporary password:`, r.temporaryPassword);
+        else toast(`${r.user.username} added`);
+      } catch (err) { $('#user-error').textContent = err.message; }
+    });
+
+    // ---- apps
+    async function loadApps() {
+      try { apps = (await api('GET', '/unify/admin/apps')).apps; renderApps(); }
+      catch (e) { $('#applist').replaceChildren(el('tr', {}, el('td', { colspan: 4, class: 'empty' }, e.message))); }
+    }
+
+    function renderApps() {
+      const tbody = $('#applist');
+      tbody.replaceChildren();
+      for (const a of apps) {
+        const status = !a.registered ? el('span', { class: 'tag' }, 'Not deployed')
+          : a.enabled ? el('span', { class: 'tag on' }, 'On') : el('span', { class: 'tag off' }, 'Off');
+        const actions = [];
+        if (a.registered && a.name !== 'admin') {
+          actions.push(el('button', { class: 'btn', type: 'button', 'aria-label': `${a.enabled ? 'Turn off' : 'Turn on'} ${a.title}`, on: { click: () => setApp(a, { enabled: !a.enabled }) } }, a.enabled ? 'Turn off' : 'Turn on'));
+        }
+        if (a.added) actions.push(el('button', { class: 'btn danger', type: 'button', 'aria-label': `Remove ${a.title}`, on: { click: () => removeApp(a) } }, 'Remove'));
+        tbody.append(el('tr', {},
+          el('td', {}, el('div', { class: 'app' }, a.icon ? el('img', { src: a.icon, alt: '' }) : null,
+            el('div', { class: 'who' }, el('b', {}, a.title), el('span', {}, a.description)))),
+          el('td', { class: 'muted' }, a.address || '—'),
+          el('td', {}, status, a.adminOnly ? el('span', { class: 'tag' }, 'Admins only') : null, a.added ? el('span', { class: 'tag' }, 'Added here') : null),
+          el('td', {}, el('div', { class: 'actions' }, actions))));
+      }
+    }
+
+    async function setApp(a, body) {
+      try { await api('PATCH', `/unify/admin/apps/${encodeURIComponent(a.name)}`, body); toast(`${a.title} ${body.enabled ? 'turned on' : 'turned off'} for everyone`); await loadApps(); }
+      catch (e) { toast(e.message); }
+    }
+    async function removeApp(a) {
+      if (!confirm(`Remove ${a.title} from the organisation's apps?`)) return;
+      try { await api('DELETE', `/unify/admin/apps/${encodeURIComponent(a.name)}`); toast(`${a.title} removed`); await loadApps(); }
+      catch (e) { toast(e.message); }
+    }
+    const appForm = $('#app-form');
+    $('#add-app').addEventListener('click', () => { appForm.reset(); $('#app-error').textContent = ''; $('#app-dialog').showModal(); });
+    appForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = appForm;
+      try {
+        await api('POST', '/unify/admin/apps', { name: f.name.value.trim(), title: f.title.value.trim(), url: f.url.value.trim(), description: f.description.value.trim(), adminOnly: f.adminOnly.checked });
+        $('#app-dialog').close(); toast(`${f.title.value} added`); await loadApps();
+      } catch (err) { $('#app-error').textContent = err.message; }
+    });
+
+    // ---- start: administrators only
+    (async () => {
+      try {
+        const who = await api('GET', '/unify/admin/me');
+        if (!who.admin) throw Object.assign(new Error('not an administrator'), { status: 403 });
+        me = who.username;
+        $('#sub').textContent = `People and apps of your organisation (${who.domain}, mail @${who.mailDomain}).`;
+        await loadUsers();
+      } catch (e) {
+        document.querySelector('main').replaceChildren(el('div', { class: 'denied' },
+          el('h2', {}, 'Administrators only'),
+          el('p', { class: 'muted' }, e.status === 403 ? 'Ask an administrator of your organisation for what you need.' : `The admin service did not answer: ${e.message}`)));
+        document.querySelector('nav').hidden = true;
+      }
+    })();
+  </script>
+</body>
+</html>

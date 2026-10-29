@@ -1,0 +1,113 @@
+{
+  "domain": "unifyworks.localhost",
+  "protocol": "http",
+  "pub_port": 80,
+  "origin": "http://unifyworks.localhost",
+  "api_base_url": "http://api.unifyworks.localhost",
+  "gui_puterjs_bundle": "http://js.unifyworks.localhost/v2/",
+  "env": "prod",
+  "static_hosting_domain": "site.unifyworks.localhost",
+  "static_hosting_domain_alt": "host.unifyworks.localhost",
+  "private_app_hosting_domain": "app.unifyworks.localhost",
+  "private_app_hosting_domain_alt": "dev.unifyworks.localhost",
+  "jwt_secret_v2": "CHANGE_ME",
+  "url_signature_secret": "CHANGE_ME",
+  "database": {
+    "engine": "mysql",
+    "host": "mariadb",
+    "port": 3306,
+    "user": "puter",
+    "password": "CHANGE_ME",
+    "database": "puter",
+    "migrationPaths": [
+      "/opt/puter/dist/src/backend/clients/database/migrations/mysql"
+    ]
+  },
+  "redis": {
+    "startupNodes": [
+      {
+        "host": "valkey",
+        "port": 6379
+      }
+    ],
+    "tls": false
+  },
+  "dynamo": {
+    "endpoint": "http://dynamo:8000",
+    "bootstrapTables": true,
+    "aws": {
+      "access_key": "CHANGE_ME",
+      "secret_key": "CHANGE_ME",
+      "region": "us-east-1"
+    }
+  },
+  "s3": {
+    "s3Config": {
+      "endpoint": "http://s3:9000",
+      "publicEndpoint": "http://s3.unifyworks.localhost",
+      "accessKeyId": "CHANGE_ME",
+      "secretAccessKey": "CHANGE_ME",
+      "region": "us-east-1",
+      "forcePathStyle": true
+    }
+  },
+  "s3_bucket": "puter-local",
+  "s3_region": "us-east-1",
+  "providers": {
+    "ollama": {
+      "enabled": false
+    }
+  },
+  "meteringEnforcement": {
+    "subscriptions": false
+  },
+  "trust_proxy": 1,
+  "events": {
+    "enabled": true
+  },
+  "gui_params": {
+    "disable_temp_users": true,
+    "brand_name": "Unify Works",
+    "title": "Unify Works",
+    "brand_logo_url": "http://brand.unifyworks.localhost/logo.svg",
+    "brand_logo_dark_url": "http://brand.unifyworks.localhost/logo-white.svg",
+    "brand_wallpaper_url": "http://brand.unifyworks.localhost/wallpaper.svg"
+  },
+  "email": {
+    "from": "\"Unify Works\" <no-reply@unify.works>",
+    "host": "mailhog",
+    "port": 1025,
+    "secure": false,
+    "ignoreTLS": true
+  },
+  "userEmail": {
+    "secret": "CHANGE_ME",
+    "localServer": true,
+    "localDomains": [
+      "unify.works"
+    ],
+    "localIngressUrl": "http://puter:4100/email/ingress-stamped",
+    "localIngressHost": "api.unifyworks.localhost"
+  },
+  "disable_user_signup": true,
+  "unifyAdmin": {
+    "admins": [
+      "admin"
+    ],
+    "serviceAccounts": [
+      "unifychat"
+    ]
+  },
+  "unifyInternal": {
+    "secret": "CHANGE_ME"
+  },
+  "peers": {
+    "signaller_url": "ws://chat-api.unifyworks.localhost/signal",
+    "fallback_ice": [
+      {
+        "urls": "stun:127.0.0.1:3478"
+      }
+    ]
+  },
+  "_comment": "Template: copy to config.json (chmod 600) and run scripts/configure.sh: it writes the domain, mail domain, brand and signaller keys and the secrets shared with .env (database, storage, internal), and makes Puter's own secrets once. Only dynamo.aws keys are yours to set (any value)."
+}
