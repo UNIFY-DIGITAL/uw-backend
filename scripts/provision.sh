@@ -117,7 +117,7 @@ for _ in $(seq 1 60); do
   state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' puter 2>/dev/null || echo missing)
   [ "$state" = healthy ] && break
   # A crash that will not go away: stop waiting.
-  if docker logs --since "$since" puter 2>&1 | tail -60 | grep -qE 'ER_ACCESS_DENIED_ERROR|EISDIR|SyntaxError: .*JSON'; then break; fi
+  if docker logs --since "$since" puter 2>&1 | tail -60 | grep -qE 'ER_ACCESS_DENIED_ERROR|EISDIR|SyntaxError: .*JSON|UnrecognizedClientException'; then break; fi
   sleep 5
 done
 if [ "$state" != healthy ]; then
@@ -126,6 +126,7 @@ if [ "$state" != healthy ]; then
   hint="read the log above"
   grep -q ER_ACCESS_DENIED_ERROR <<<"$log" && hint="database login refused: see the Database step (a new install: scripts/provision.sh --fresh)"
   grep -q EISDIR <<<"$log" && hint="a mounted file is a folder: run scripts/patch-puter.sh and scripts/build-desktop.sh again"
+  grep -q UnrecognizedClientException <<<"$log" && hint="the key-value store refused config.json dynamo.aws keys: scripts/configure.sh makes valid ones (letters and digits)"
   grep -qE 'SyntaxError: .*JSON' <<<"$log" && hint="puter/config/config.json is not valid JSON: check your edits, then scripts/configure.sh"
   die "Puter did not become healthy (state: $state)" "$hint"
 fi

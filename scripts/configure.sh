@@ -126,6 +126,15 @@ if env.get("GOOGLE_CLIENT_ID"):
     providers["google"] = {"client_id": env["GOOGLE_CLIENT_ID"], "client_secret": env["GOOGLE_CLIENT_SECRET"]}
 else:
     providers.pop("google", None)
+# The key-value store (DynamoDB Local, only Puter talks to it): any keys, made
+# once, but the emulator refuses an access key that is not letters and digits
+# (the template's CHANGE_ME, with its "_", is refused: Puter does not start).
+aws = c.setdefault("dynamo", {}).setdefault("aws", {})
+if not re.fullmatch(r"[A-Za-z0-9]+", str(aws.get("access_key", ""))):
+    aws["access_key"] = "unify" + secrets.token_hex(8)
+if aws.get("secret_key", "CHANGE_ME") in ("", "CHANGE_ME"):
+    aws["secret_key"] = secrets.token_hex(32)
+aws.setdefault("region", "us-east-1")
 c["peers"] = {"signaller_url": env["SIGNAL"], "fallback_ice": [{"urls": f"stun:{env['TURN_HOST']}:3478"}]}
 tmp = path + ".tmp"
 with open(tmp, "w") as f:

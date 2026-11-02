@@ -109,5 +109,5 @@
       }
     ]
   },
-  "_comment": "Template: copy to config.json (chmod 600) and run scripts/configure.sh: it writes the domain, mail domain, brand and signaller keys and the secrets shared with .env (database, storage, internal), and makes Puter's own secrets once. Only dynamo.aws keys are yours to set (any value)."
+  "_comment": "Template: copy to config.json (chmod 600) and run scripts/configure.sh: it writes the domain, mail domain, brand and signaller keys and the secrets shared with .env (database, storage, internal), and makes Puter's own secrets once. Nothing else is yours to set: the dynamo.aws keys are made by configure.sh too."
 }
