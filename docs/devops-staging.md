@@ -174,6 +174,8 @@ From an empty VM to a working suite is about twelve commands; the slow steps are
    ```
 
    On a Linux server, skipping `fix-permissions.sh` shows as `puter-s3` restarting with "Permission denied", and Puter unable to read `config.json`.
+
+   **Finish `.env` before the first start.** MariaDB creates its database, user and password (`MARIADB_*`) only at its first start, into `puter/data/mariadb`, and ignores later changes. A changed value afterwards shows as Puter unhealthy with "Access denied for user". On a fresh install with no data, stop the stack, run `scripts/configure.sh`, remove `puter/data` (`docker run --rm -v "$HOME/unify-suite/puter:/p" alpine:3.20 rm -rf /p/data`) and start again. With real data, change the password inside MariaDB instead (`ALTER USER`). Database and user names: letters, digits and `_` only.
 3. **TLS**, by `TLS_MODE` in `.env` (`scripts/configure.sh` writes Caddy's site blocks, `caddy/sites.caddy`; port 443 is always published):
    - `auto`: Caddy fetches and renews a Let's Encrypt certificate per host name the suite uses (desktop, `api.`, `js.`, `s3.`, `chat-api.`, every app). Needs DNS for `<domain>` and `*.<domain>` pointing at the server and ports 80 and 443 open to the internet before the first start. Nothing to renew by hand. Does not cover Puter's per-user sites (`<name>.site.<domain>`), which the suite does not use.
    - `files`: put a wildcard `fullchain.pem` and `privkey.pem` (DNS-01 issued) in `puter/tls/`, and renew them yourself.

@@ -72,6 +72,17 @@ for keys, var in shared:
     for k in keys[:-1]:
         node = node.setdefault(k, {})
     node[keys[-1]] = value
+# Names shared with .env: the database and its user (MariaDB creates them at its
+# first start), and the storage bucket (s3-init creates it).
+for name, var, rule in [("database", "MARIADB_DATABASE", r"[A-Za-z0-9_]{1,64}"), ("user", "MARIADB_USER", r"[A-Za-z0-9_]{1,64}")]:
+    value = env.get(var) or "puter"
+    if not re.fullmatch(rule, value):
+        sys.exit(f"{var}={value}: letters, digits and _ only (a hyphen breaks MariaDB names)")
+    c.setdefault("database", {})[name] = value
+bucket = env.get("S3_BUCKET") or "puter-local"
+if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):
+    sys.exit(f"S3_BUCKET={bucket}: 3-63 lower-case letters, digits, . and -")
+c["s3_bucket"] = bucket
 # Puter's own secrets (no other container knows them): made once, never replaced.
 for keys in [("jwt_secret_v2",), ("url_signature_secret",), ("userEmail", "secret")]:
     node = c
