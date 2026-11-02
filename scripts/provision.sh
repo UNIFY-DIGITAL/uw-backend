@@ -161,15 +161,23 @@ elif grep -q "already in use" <<<"$out"; then
 else
   die "could not create the chat service account" "$out"
 fi
-docker compose restart chat >/dev/null
-for _ in $(seq 1 15); do docker logs --since 60s puter-chat 2>&1 | grep -q listening && break; sleep 2; done
-docker logs --since 60s puter-chat 2>&1 | grep -q listening \
-  || die "the chat server did not start" "$(docker logs --tail 10 puter-chat 2>&1)"
-ok "chat server listening"
 
 # ------------------------------------------------------------------ apps
 step "Apps (about 15 minutes on a new server)"
 scripts/deploy-apps.sh 2>&1 | sed 's/^/    /' || die "deploy-apps.sh failed" "read its output above"
+
+# The chat server runs Chat's and Meetings' back ends, which deploy-apps.sh
+# builds (chat-server/teamchat-worker.js, meetings-rooms.js): only now can it start.
+step "Chat server"
+for f in chat-server/teamchat-worker.js chat-server/meetings-rooms.js; do
+  [ -f "$f" ] || die "$f is missing" "deploy-apps.sh builds it from the Chat / Meetings app: scripts/deploy-apps.sh teamchat meetings"
+done
+since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+docker compose restart chat >/dev/null
+for _ in $(seq 1 15); do docker logs --since "$since" puter-chat 2>&1 | grep -q listening && break; sleep 2; done
+docker logs --since "$since" puter-chat 2>&1 | grep -q listening \
+  || die "the chat server did not start" "$(docker logs --since "$since" --tail 10 puter-chat 2>&1)"
+ok "chat server listening"
 
 # ------------------------------------------------------------------ final checks
 step "Final checks"
