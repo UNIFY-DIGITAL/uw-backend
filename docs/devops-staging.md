@@ -147,14 +147,30 @@ here + `scripts/deploy-apps.sh <name>`.
 
 ## First-time deployment
 
-**The short way**: after step 1 (the code) and filling in `.env` (step 2), one
-command does steps 2-9 in order and checks each one, stopping with the reason
-and the fix at the first problem. Safe to run again after fixing it:
+**The short way: a new machine in three commands.** Create the VM from your
+laptop (*Trial server* has the `gcloud` line; keep `--tags unify-suite`, which
+opens the firewall, and the startup script, which installs Docker), then on it:
 
 ```bash
-scripts/provision.sh --check    # settings, Docker, registry sign-in, DNS: nothing started
-scripts/provision.sh            # configure, database login, desktop, start, admin, chat account, apps, final checks
-scripts/provision.sh --fresh    # the same, first deleting puter/data (asks you to type the domain)
+git config --global credential.https://github.com.helper \
+  '!f() { [ "$1" = get ] || exit 0; echo username=x-access-token; echo "password=$(gcloud secrets versions access latest --secret=github-deploy-token --project unifyworks)"; }; f'
+git clone -b feature/self-hosted-suite https://github.com/UNIFY-DIGITAL/uw-backend.git ~/unify-suite
+~/unify-suite/scripts/provision.sh
+```
+
+`provision.sh` asks a few questions first (domain, organisation or trial,
+admin password, this server's IP, Google client and mail relay if wanted, a
+DuckDNS token to point the name here), each with a default; it writes `.env`
+with every secret made at random, then runs unattended: waits for Docker,
+joins the `docker` group, checks the firewall tag, signs in to the registry,
+waits for DNS, then steps 2-10 below, each checked, ending with every address
+answering. It stops at the first problem with the reason and the fix, and is
+safe to run again.
+
+```bash
+scripts/provision.sh --setup    # change the answers (current ones are the defaults; secrets are kept)
+scripts/provision.sh --check    # only the checks: nothing is started
+scripts/provision.sh --fresh    # start empty: deletes puter/data first (asks you to type the domain)
 ```
 
 The steps below are what it runs, for doing (or debugging) them one by one.
