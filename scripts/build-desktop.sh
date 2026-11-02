@@ -5,16 +5,17 @@
 # Runs in a throwaway node:24 container; nothing is installed on the host.
 set -euo pipefail
 SUITE=$(cd "$(dirname "$0")/.." && pwd)
-. "$SUITE/scripts/lib/suite.sh"   # NODE_BUILD_IMAGE (and REGISTRY) from .env
+. "$SUITE/scripts/lib/suite.sh"   # NODE_BUILD_IMAGE, PUTER_GIT_URL (and REGISTRY) from .env
 # The commit the pinned image was built from (its revision label), so the
 # desktop always matches the server: there is no second version to keep in step.
 IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import json,sys; print(json.load(sys.stdin)['services']['puter']['image'])")
 docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull -q "$IMAGE" >/dev/null
 PUTER_COMMIT=${PUTER_COMMIT:-$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')}
 [ -n "$PUTER_COMMIT" ] || { echo "the image $IMAGE has no revision label; set PUTER_COMMIT"; exit 1; }
-# A fresh checkout of the suite has no vendor/puter (not in git): clone Puter's source once.
-[ -d "$SUITE/vendor/puter/.git" ] || git clone -q --filter=blob:none https://github.com/HeyPuter/puter.git "$SUITE/vendor/puter"
-git -C "$SUITE/vendor/puter" cat-file -e "$PUTER_COMMIT^{commit}" 2>/dev/null || git -C "$SUITE/vendor/puter" fetch -q origin
+# A fresh checkout of the suite has no vendor/puter (not in git): clone Puter's
+# source once, from .env PUTER_GIT_URL (our mirror on servers).
+puter_source
+git -C "$SUITE/vendor/puter" cat-file -e "$PUTER_COMMIT^{commit}" 2>/dev/null || puter_source fetch
 git -C "$SUITE/vendor/puter" checkout -q "$PUTER_COMMIT"
 echo "building the desktop at Puter ${PUTER_COMMIT:0:8} (the revision of $IMAGE)"
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp \

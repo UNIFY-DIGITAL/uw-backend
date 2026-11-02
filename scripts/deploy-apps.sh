@@ -14,7 +14,28 @@
 set -euo pipefail
 . "$(dirname "$0")/lib/suite.sh"
 cd "$SUITE"
-EVERYTHING=${EVERYTHING:-$HOME/everything/src}
+# The apps' source (uw-frontend, "everything"), first found of: git (.env
+# FRONTEND_GIT_URL at FRONTEND_GIT_REF, kept in vendor/frontend), a local
+# checkout (.env EVERYTHING, default ~/everything/src), or none: each app then
+# keeps what is already deployed in apps/<host>/ (re-registered, not rebuilt).
+resolve_frontend() {
+  # Only what the suite builds: its apps' folders and dev/ (which they import).
+  local paths=(dev)
+  for a in $(app_names); do
+    local src; src=$(app_field "$a" source)
+    [[ $src == suite:* ]] || paths+=("src/$src")
+  done
+  if [ -n "${FRONTEND_GIT_URL:-}" ] && git_copy "$SUITE/vendor/frontend" "$FRONTEND_GIT_URL" "${FRONTEND_GIT_REF:-self-hosted}" "${paths[@]}"; then
+    EVERYTHING="$SUITE/vendor/frontend/src"
+    echo "==> apps' source: $FRONTEND_GIT_URL ${FRONTEND_GIT_REF:-self-hosted} at $(git -C "$SUITE/vendor/frontend" rev-parse --short HEAD)"
+  elif [ -d "${EVERYTHING:-$HOME/everything/src}" ]; then
+    EVERYTHING=$(cd "${EVERYTHING:-$HOME/everything/src}" && pwd)
+    echo "==> apps' source: $EVERYTHING (local checkout)"
+  else
+    EVERYTHING=""
+    echo "==> no apps' source (FRONTEND_GIT_URL, EVERYTHING): apps already deployed are kept as they are"
+  fi
+}
 
 # npm runs in the pinned node:24 container (scripts/lib/suite.sh), as you, so a
 # server needs Docker only, and every machine builds with the same Node.
@@ -48,6 +69,9 @@ for w in wanted:
     for a in hits: print(a["name"])
 PY
 mapfile -t names < <(awk '!seen[$0]++' "$SUITE/.deploy-plan"); rm -f "$SUITE/.deploy-plan"
+for name in "${names[@]}"; do
+  [[ $(app_field "$name" source) == suite:* ]] || { resolve_frontend; break; }
+done
 
 
 restart_chat=0
@@ -63,9 +87,14 @@ for name in "${names[@]}"; do
     rm -rf "$out" && cp -r "$dir" "$out"
     for f in "$out"/*.html; do sed -i -e "s#%SDK_URL%#$SDK_URL#g" -e "s#%BRAND_NAME%#$BRAND_NAME#g" "$f"; done
     icon="$dir/icon.svg"
+  elif [ -z "$EVERYTHING" ] || [ ! -d "$EVERYTHING/$source" ]; then
+    # No source here: keep the copy already deployed, so a server without the
+    # frontend still re-registers (and re-points) what it has.
+    [ -f "$out/index.html" ] || { echo "   no source at ${EVERYTHING:-(none)}/$source and nothing deployed in apps/$host/"; exit 1; }
+    echo "   no source: keeping the deployed copy in apps/$host/"
+    icon="$out/unify-icon.png"
   else
     dir="$EVERYTHING/$source"
-    [ -d "$dir" ] || { echo "   no source at $dir"; exit 1; }
     [ -d "$dir/node_modules" ] || in_node "$dir" -- npm ci --silent --no-audit --no-fund
     # Its back end, run by the chat server (Chat, Meetings).
     worker=$(app_field "$name" worker)
@@ -124,7 +153,7 @@ for d, _, files in os.walk(root):
 print(f"   branded: {changed} mention(s) of the product name")
 PY
   fi
-  [ -f "$icon" ] && cp "$icon" "$out/unify-icon.${icon##*.}"
+  if [ -f "$icon" ] && [ "$icon" != "$out/unify-icon.${icon##*.}" ]; then cp "$icon" "$out/unify-icon.${icon##*.}"; fi
   scripts/set-app-origin.sh "$out" >/dev/null
 
   if [ "${SKIP_REGISTER:-}" != 1 ]; then
@@ -149,4 +178,5 @@ if [ -f "$SUITE/.chat-changed" ]; then
   rm -f "$SUITE/.chat-changed"
   docker compose restart chat >/dev/null && echo "==> chat server restarted with the new back ends"
 fi
+"$SUITE/scripts/sync-brand.sh"
 echo "done: ${names[*]}"

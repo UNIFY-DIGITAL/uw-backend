@@ -4,7 +4,9 @@
 #   puter/config/config.json   every key that names the domain, the mail domain,
 #                              the brand or the call signaller, and the secrets it
 #                              shares with .env (database, storage keys, internal secret);
-#                              its own secrets are made once if still CHANGE_ME
+#                              its own secrets are made once if still CHANGE_ME; the kind
+#                              of server (SUITE_MODE: sign-up, guests), the mail relay
+#                              (SMTP_RELAY_*) and Google sign-in (GOOGLE_CLIENT_*)
 #   caddy/apps.caddy           one route per app sub-domain (<host>.<domain>),
 #                              the chat back end (chat-api.), relay logins
 #   caddy/sites.caddy          HTTP or HTTPS and the certificates (.env TLS_MODE)
@@ -77,6 +79,42 @@ for keys in [("jwt_secret_v2",), ("url_signature_secret",), ("userEmail", "secre
         node = node.setdefault(k, {})
     if node.get(keys[-1], "CHANGE_ME") in ("", "CHANGE_ME"):
         node[keys[-1]] = secrets.token_hex(32)
+# What kind of server (.env SUITE_MODE): an organisation's (people are added by
+# an administrator) or a public trial (anyone signs up, or tries as a guest).
+kind = env.get("SUITE_MODE") or "organisation"
+if kind not in ("organisation", "trial"):
+    sys.exit(f"SUITE_MODE={kind}: use organisation or trial")
+trial = kind == "trial"
+c["disable_user_signup"] = not trial
+g["disable_temp_users"] = not trial
+# (Puter's captcha stays off: it guards /signup, and the desktop's guest
+# sign-up sends no answer, so guests could not start.)
+ua = c.setdefault("unifyAdmin", {})
+ua["mode"] = kind
+ua["trialChat"] = trial and env.get("TRIAL_CHAT", "0") == "1"
+
+# Mail the server sends (sign-up codes, password resets; people's mail to
+# outside addresses on an organisation server): .env SMTP_RELAY_*. Unset: the
+# transport in config.json is left as it is (MailHog in the template).
+relay = env.get("SMTP_RELAY_HOST", "")
+if relay:
+    port = int(env.get("SMTP_RELAY_PORT") or 587)
+    t = {"from": c.get("email", {}).get("from"), "host": relay, "port": port, "secure": port == 465}
+    if env.get("SMTP_RELAY_USER"):
+        if env.get("SMTP_RELAY_PASSWORD", "CHANGE_ME") in ("", "CHANGE_ME"):
+            sys.exit("set SMTP_RELAY_PASSWORD in .env (or unset SMTP_RELAY_USER)")
+        t["auth"] = {"user": env["SMTP_RELAY_USER"], "pass": env["SMTP_RELAY_PASSWORD"]}
+    c["email"] = t
+
+# Sign in with Google (.env GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET, an OAuth
+# client for <proto>://<domain>/auth/oidc/callback/{login,signup,revalidate}). Unset: no Google button.
+providers = c.setdefault("oidc", {}).setdefault("providers", {})
+if env.get("GOOGLE_CLIENT_ID"):
+    if env.get("GOOGLE_CLIENT_SECRET", "CHANGE_ME") in ("", "CHANGE_ME"):
+        sys.exit("set GOOGLE_CLIENT_SECRET in .env (or unset GOOGLE_CLIENT_ID)")
+    providers["google"] = {"client_id": env["GOOGLE_CLIENT_ID"], "client_secret": env["GOOGLE_CLIENT_SECRET"]}
+else:
+    providers.pop("google", None)
 c["peers"] = {"signaller_url": env["SIGNAL"], "fallback_ice": [{"urls": f"stun:{env['TURN_HOST']}:3478"}]}
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
@@ -170,8 +208,22 @@ server {{
     location /assets/ {{ add_header Cache-Control "public, max-age=31536000, immutable"; }}
     location = /index.html {{ add_header Cache-Control "no-cache"; }}
 }}
+
+# brand.<domain>: the organisation's logos (apps/brand-org/, from the frontend by
+# scripts/sync-brand.sh) first, the suite's defaults (apps/brand/) for any file it lacks.
+server {{
+    listen 80;
+    server_name brand.{domain};
+    root /usr/share/nginx/html/brand-org;
+    add_header Cache-Control "public, max-age=300";
+    location / {{ try_files $uri @suite_default; }}
+    location @suite_default {{
+        root /usr/share/nginx/html/brand;
+        try_files $uri =404;
+    }}
+}}
 """
 os.makedirs(f"{suite}/nginx", exist_ok=True)
 open(f"{suite}/nginx/apps.conf", "w").write(nginx)
-print(f"configured for {proto}://{domain} (TLS {mode}; mail @{mail}); apps: " + ", ".join(f"{a['host']}.{domain}" for a in apps))
+print(f"configured for {proto}://{domain} ({kind}; TLS {mode}; mail @{mail}{'; Google sign-in' if 'google' in providers else ''}); apps: " + ", ".join(f"{a['host']}.{domain}" for a in apps))
 PY

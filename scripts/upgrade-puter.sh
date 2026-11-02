@@ -53,7 +53,7 @@ cmd_check() {
   cur_rev=$(revision_of "$cur")
   new=$(resolve "${1:-main}"); docker pull -q "$new" >/dev/null
   new_rev=$(revision_of "$new")
-  git -C "$VENDOR" fetch -q origin
+  puter_source fetch
   echo "running:  ${cur#*@}  Puter ${cur_rev:0:8}  ($(git -C "$VENDOR" log -1 --format=%cd --date=short "$cur_rev" 2>/dev/null))"
   echo "newest:   ${new#*@}  Puter ${new_rev:0:8}  ($(git -C "$VENDOR" log -1 --format=%cd --date=short "$new_rev" 2>/dev/null))"
   if [ "$cur_rev" = "$new_rev" ]; then echo "up to date"; return; fi
@@ -98,8 +98,8 @@ cmd_upgrade() {
   docker pull -q "$new" >/dev/null
   new_rev=$(revision_of "$new")
   [ -n "$new_rev" ] || { echo "the image has no revision label"; exit 1; }
-  git -C "$VENDOR" fetch -q origin
-  git -C "$VENDOR" cat-file -e "$new_rev^{commit}" || { echo "Puter commit $new_rev not found upstream"; exit 1; }
+  puter_source fetch
+  git -C "$VENDOR" cat-file -e "$new_rev^{commit}" || { echo "Puter commit $new_rev not found in $PUTER_GIT_URL"; exit 1; }
   if [ "${cur#*@}" = "${new#*@}" ]; then echo "already on ${new#*@}"; exit 0; fi
   echo "    Puter ${cur_rev:0:8} -> ${new_rev:0:8}"
   [ -n "$cur_rev" ] && upstream_changes "$cur_rev" "$new_rev" | sed 's/^/    /'

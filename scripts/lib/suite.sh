@@ -38,6 +38,42 @@ export PUTER_ORIGIN="$ORIGIN" PUTER_API_ORIGIN="$API" PUTER_SDK_URL="$SDK_URL"
 ALPINE_IMAGE="${REGISTRY:-docker.io}/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 NODE_BUILD_IMAGE="${REGISTRY:-docker.io}/library/node:24@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a"
 
+# Puter's source (vendor/puter, not in git): the desktop build and upgrades read
+# it. .env PUTER_GIT_URL = our private mirror on servers; unset = HeyPuter's GitHub.
+PUTER_GIT_URL=${PUTER_GIT_URL:-https://github.com/HeyPuter/puter.git}
+# Clone it if missing, and make sure it fetches from PUTER_GIT_URL:  puter_source [fetch]
+puter_source() {
+  local dir="$SUITE/vendor/puter"
+  [ -d "$dir/.git" ] || git clone -q --filter=blob:none "$PUTER_GIT_URL" "$dir"
+  [ "$(git -C "$dir" remote get-url origin)" = "$PUTER_GIT_URL" ] || git -C "$dir" remote set-url origin "$PUTER_GIT_URL"
+  [ "${1:-}" != fetch ] || git -C "$dir" fetch -q origin
+}
+
+# A repository the scripts read from git (the apps' source, the site's logos):
+# a shallow copy of <ref> in <dir>, cloned or brought up to date; with paths,
+# only those folders are checked out and downloaded (the apps' repository is
+# large). An update that cannot reach the server keeps the copy there is (with
+# a warning); fails only when there is no copy at all, so the caller falls
+# back to a local folder.
+#   git_copy <dir> <url> <ref> [path ...]
+git_copy() {
+  local dir=$1 url=$2 ref=$3; shift 3
+  if [ ! -d "$dir/.git" ]; then
+    rm -rf "$dir"
+    git clone -q --depth 1 --filter=blob:none --no-checkout -b "$ref" "$url" "$dir" \
+      || { rm -rf "$dir"; echo "   cannot clone $url ($ref)" >&2; return 1; }
+  else
+    [ "$(git -C "$dir" remote get-url origin)" = "$url" ] || git -C "$dir" remote set-url origin "$url"
+    if ! git -C "$dir" fetch -q --depth 1 --filter=blob:none origin "$ref"; then
+      echo "   cannot reach $url: using the copy from $(git -C "$dir" log -1 --format=%cd --date=short)" >&2
+      return 0
+    fi
+  fi
+  if [ $# -gt 0 ]; then git -C "$dir" sparse-checkout set "$@"; else git -C "$dir" sparse-checkout disable; fi
+  local at; at=$(git -C "$dir" rev-parse -q --verify FETCH_HEAD || git -C "$dir" rev-parse HEAD)
+  git -C "$dir" checkout -q -f --detach "$at"
+}
+
 app_url() { echo "$PUTER_PROTOCOL://$1.$PUTER_DOMAIN"; }
 
 # A field of one app in suite-apps.json:  app_field <name> <field>

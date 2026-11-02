@@ -1,6 +1,13 @@
 /**
- * The organisation's administration, for a suite where people cannot sign
- * themselves up: users, apps, the people directory and onboarding.
+ * The organisation's administration: users, apps, the people directory and
+ * onboarding. config.json "unifyAdmin.mode" (.env SUITE_MODE, scripts/configure.sh):
+ *
+ *   organisation  people cannot sign themselves up; administrators add them
+ *   trial         a public trial server: anyone signs up (email, Google) or tries
+ *                 the apps as a temporary guest. Sign-ups are onboarded like
+ *                 added accounts (a Chat seat only with "unifyAdmin.trialChat":
+ *                 its one workspace is shared by everyone), and the people
+ *                 directory is empty: visitors are strangers to each other.
  *
  * Signed in as an administrator, from the desktop or the Admin app
  * (api.<domain>, the Admin console uses these):
@@ -20,7 +27,8 @@
  * Signed in as anyone (the App Center, the apps button, name suggestions):
  *
  *   GET /unify/apps                 the apps this person may use
- *   GET /unify/directory?q=         colleagues: username, name, email (not suspended, not service accounts)
+ *   GET /unify/directory?q=         colleagues: username, name, email (not suspended, not service accounts;
+ *                                   none on a trial server)
  *
  * For DevOps scripts on the server, no session: header x-unify-secret =
  * config.json "unifyInternal.secret" (= UNIFY_INTERNAL_SECRET in .env):
@@ -31,7 +39,7 @@
  *   POST /unify/internal/onboard-all               onboard every account again
  *   POST /unify/internal/mail-domain               { from, to }: move addresses to a new mail domain
  *
- * Onboarding, when an account is created (and on demand): its mailbox folder
+ * Onboarding, when an account is created or signs itself up (and on demand): its mailbox folder
  * exists from the start, Email and Calendar are allowed into it (no
  * permission prompts on first use), and it joins the organisation's Chat
  * workspace (chat-server /internal/onboard), so colleagues can message and
@@ -62,6 +70,8 @@ const DOMAIN = config.domain;
 const ORIGIN = config.origin || `${PROTO}://${DOMAIN}`;
 const API = config.api_base_url || `${PROTO}://api.${DOMAIN}`;
 const CHAT_INTERNAL = config.unifyInternal?.chatUrl || 'http://chat:8787';
+const TRIAL = config.unifyAdmin?.mode === 'trial';
+const TRIAL_CHAT = TRIAL && config.unifyAdmin?.trialChat === true;
 const MANIFEST = process.env.UNIFY_SUITE_APPS || '/etc/puter/suite-apps.json';
 const USERNAME = /^[a-z0-9_]{3,45}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -146,7 +156,8 @@ async function chat(path, body) {
 
 /**
  * Ready an account before its first sign-in: its mailbox folder, Email and
- * Calendar allowed into it, and a seat in the organisation's Chat.
+ * Calendar allowed into it, and a seat in the organisation's Chat (on a trial
+ * server only with "unifyAdmin.trialChat").
  */
 async function onboard(row) {
     const result = { mailbox: false, grants: [], chat: null };
@@ -171,8 +182,29 @@ async function onboard(row) {
             }
         }
     }
-    result.chat = await chat('/internal/onboard', { uuid: row.uuid, username: row.username });
+    result.chat = TRIAL && !TRIAL_CHAT
+        ? { skipped: 'trial server' }
+        : await chat('/internal/onboard', { uuid: row.uuid, username: row.username });
     return result;
+}
+
+// A trial server's sign-ups (email or Google), and guests who keep their
+// account (a temporary user saving it), are onboarded as an added account is.
+// Temporary guests are not: they have no address, and go when they sign out.
+if (TRIAL) {
+    const onboardSignup = async (userId, why) => {
+        try {
+            const row = await stores().user.getById(userId);
+            if (!row || isService(row) || !row.email || (row.password === null && !row.email_confirmed)) return;
+            log(`${why} ${row.username}; onboarding:`, JSON.stringify(await onboard(row)));
+        } catch (e) {
+            log(`onboarding after ${why}:`, e.message);
+        }
+    };
+    extension.on('puter.signup.success', (_key, ev) => {
+        if (!ev?.is_temp) onboardSignup(ev.user_id, 'signed up');
+    });
+    extension.on('user.save_account', (_key, ev) => onboardSignup(ev?.user_id, 'saved account'));
 }
 
 /**
@@ -477,6 +509,7 @@ extension.get('/unify/apps', API_ROUTE, async (req, res) => {
 });
 
 extension.get('/unify/directory', API_ROUTE, async (req, res) => {
+    if (TRIAL) return res.json({ people: [] });
     const q = lower(req.query?.q);
     const people = (await allPeople()).filter((r) => !r.suspended && r.email);
     const match = (r) => !q || [r.username, r.email, displayName(r)].some((v) => lower(v).includes(q));

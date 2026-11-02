@@ -92,6 +92,12 @@ The rest:
 | --- | --- | --- |
 | `REGISTRY` | Where images come from: our Artifact Registry copy (`scripts/mirror-images.sh`). Unset = Docker Hub / GitHub, same digests | `asia-south1-docker.pkg.dev/unifyworks/unify-suite` |
 | `HTTP_PORT`, `HTTPS_PORT` | Ports Caddy publishes | `80`, `443` |
+| `PUTER_GIT_URL` | Where Puter's source comes from (desktop build, upgrades). Unset = HeyPuter's GitHub | `https://github.com/UNIFY-DIGITAL/puter-mirror.git` |
+| `SUITE_MODE` | `organisation` (administrators add people) or `trial` (public sign-up, Google, guests; *Trial server*) | `organisation` |
+| `SMTP_RELAY_HOST`, `_PORT`, `_USER`, `_PASSWORD` | Mail the server sends (sign-up codes, password resets; on an organisation server people's mail out). Unset: MailHog keeps it all | a relay on 587 (port 25 out is blocked on Google Cloud) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Sign in with Google. Unset: no Google button | trial server only, for now |
+| `FRONTEND_GIT_URL`, `FRONTEND_GIT_REF`, `EVERYTHING` | The apps' source (*Sources*) | `https://github.com/UNIFY-DIGITAL/uw-frontend.git`, `self-hosted` |
+| `BRAND_GIT_URL`, `BRAND_GIT_REF`, `BRAND_GIT_PATH`, `BRAND_SOURCE` | The logos (*Sources*) | `https://github.com/UNIFY-DIGITAL/uw-frontend-web.git`, its branch |
 | `TLS_MODE` | `off` (http), `auto` (Caddy fetches certificates), `files` (yours in `puter/tls/`) | `auto` |
 | `MARIADB_ROOT_PASSWORD`, `MARIADB_DATABASE`, `MARIADB_USER`, `MARIADB_PASSWORD` | Database | new random passwords; DB `puter`, user `puter` |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` | File storage (RustFS, S3-compatible) | new random keys; bucket per org |
@@ -142,15 +148,16 @@ here + `scripts/deploy-apps.sh <name>`.
 
 From an empty VM to a working suite is about twelve commands; the slow steps are the image pulls and the app builds (about 15 minutes in all). Run everything as one non-root deploy user in the `docker` group, from the stack folder. The example domain is `stg.unify.works`.
 
-1. **Get the code** (once both trees are in git):
+1. **Get the code** over HTTPS with the deploy token (*Git access* below sets it up once per VM):
 
    ```bash
-   git clone <unify-suite repo> ~/unify-suite
-   git clone -b self-hosted <everything repo> ~/everything
+   git clone https://github.com/UNIFY-DIGITAL/uw-backend.git ~/unify-suite
    cd ~/unify-suite
    ```
 
-   Not in git, made on the server by the scripts: `vendor/puter` (cloned by `build-desktop.sh` at the image's revision), the built apps in `apps/` and the chat server's two bundles (`deploy-apps.sh`; the chat server restarts until they exist), Caddy and nginx routes (`configure.sh`) and the page patch (`patch-puter.sh`). See `.gitignore`.
+   Only the suite is cloned by hand. The scripts fetch the rest from git themselves (`.env`, *Sources*): the apps' source (`uw-frontend`, only the apps the suite builds), the logos (`uw-frontend-web`) and Puter's source (`puter-mirror`). Later deploys are `git pull` here, then the scripts (*Updates and redeploys*): no copying files to the server.
+
+   Not in git, made on the server by the scripts: `vendor/puter` (cloned by `build-desktop.sh` at the image's revision), `vendor/frontend` and `vendor/brand-source` (`deploy-apps.sh`, `sync-brand.sh`), the built apps in `apps/` and the chat server's two bundles (`deploy-apps.sh`; the chat server restarts until they exist), Caddy and nginx routes (`configure.sh`) and the page patch (`patch-puter.sh`). See `.gitignore`.
 2. **Settings from the templates**, then fill in every `CHANGE_ME` with `openssl rand -hex 32` and the staging values from *Configuration reference*:
 
    ```bash
@@ -197,7 +204,7 @@ From an empty VM to a working suite is about twelve commands; the slow steps are
    ```bash
    scripts/deploy-apps.sh
    ```
-9. **Branding**: the real logo (`logo.svg`, `logo-white.svg`) and wallpaper into `apps/brand/` (served at `https://brand.<domain>/`); no restart needed.
+9. **Branding**: `BRAND_GIT_URL` / `BRAND_GIT_REF` in `.env` (the site's repository; or `BRAND_SOURCE`, its Firebase address or a local folder), then `scripts/sync-brand.sh` (also run by `deploy-apps.sh`). It copies `logo.svg`, `logo-white.svg` and `wallpaper.svg` into `apps/brand-org/`; `https://brand.<domain>/` serves those, and the suite's own files in `apps/brand/` for any it lacks. No restart needed; `scripts/sync-brand.sh --reset` goes back to the defaults.
 10. **People**: in the Admin app (an administrator, from the apps button), or `scripts/create-user.sh <username> [--name "Full Name"]`. Each account is onboarded at creation: mailbox, Email and Calendar access, Chat membership.
 11. **DNS for mail**: MX → the VM, plus SPF, DKIM (from the relay) and DMARC records. Then run *Verification*.
 
@@ -210,7 +217,8 @@ Every change is a script run from the stack folder; settings come from `.env`, n
 | One or more apps | `scripts/deploy-apps.sh <name> …` (e.g. `calendar`, `teamchat`, `admin`) | none; users reload the app. Chat and Meetings: the chat server restarts (about 5 s; calls carry on, peer-to-peer) |
 | An app on or off for everyone, or another web app added | the Admin app (Apps), or `POST /unify/internal/apps/<name>/enabled` | none |
 | The domain, mail domain or brand (`.env`) | `scripts/configure.sh`, restart puter, puter-smtp, caddy, apps, chat, then `scripts/deploy-apps.sh` | a few minutes |
-| Brand name, logo, wallpaper | edit `gui_params` (and files in `apps/brand/`), `docker compose restart puter` | about 1 minute |
+| Logo, wallpaper (changed in the frontend's `public/brand/`) | `scripts/sync-brand.sh` | seconds |
+| Brand name | `BRAND_NAME` in `.env`, then as for the domain above | a few minutes |
 | Branding code (`gui-extensions/`) | `scripts/build-desktop.sh` (restarts Puter itself) | about 1 minute |
 | Our extensions (`extensions/usersend`, `extensions/useradmin`, `extensions/unifyorigin`) | `docker compose restart puter` | about 1 minute |
 | Any setting in `config.json` | `docker compose restart puter` (and `puter-smtp` for mail settings) | about 1 minute |
@@ -256,6 +264,123 @@ leave it unset and get the same images, by the same digests, from upstream.
   copies it into the registry before pinning; production's
   `upgrade sha256:<digest>` then pulls it from there.
 - **List or tag**: `gcloud artifacts docker images list asia-south1-docker.pkg.dev/unifyworks/unify-suite --include-tags`.
+
+### Puter's source: our own copy
+
+`vendor/puter` is not in git: `build-desktop.sh` clones it at the image's
+revision from `.env` `PUTER_GIT_URL`. Servers point it at our private mirror,
+so a rebuild never depends on HeyPuter's GitHub. Create the mirror once, and
+refresh it before each Puter upgrade (DevOps laptop, with push rights):
+
+```bash
+git clone --bare https://github.com/HeyPuter/puter.git puter.git    # branches and tags only
+cd puter.git && git push --mirror git@github.com:UNIFY-DIGITAL/puter-mirror.git
+# refresh:
+git fetch --prune origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' && git push --mirror git@github.com:UNIFY-DIGITAL/puter-mirror.git
+```
+
+(Not `git clone --mirror`: it also copies GitHub's pull-request refs, which
+GitHub refuses on push.) An existing `vendor/puter` switches to a new
+`PUTER_GIT_URL` by itself on the next run.
+
+### Sources: git first, then a local folder, then a fallback
+
+| What | 1. git (`.env`) | 2. local folder | 3. neither |
+| --- | --- | --- | --- |
+| The apps (`deploy-apps.sh`) | `FRONTEND_GIT_URL` at `FRONTEND_GIT_REF`, in `vendor/frontend`: only `dev/` and the apps' folders (about 0.8 GB, not the whole 1.8 GB) | `EVERYTHING` (default `~/everything/src`, a developer's checkout) | each app keeps what is deployed in `apps/<host>/` (re-registered, not rebuilt) |
+| The logos (`sync-brand.sh`) | `BRAND_GIT_URL` at `BRAND_GIT_REF`, folder `BRAND_GIT_PATH` (default `public/brand`), in `vendor/brand-source` | `BRAND_SOURCE`: a local folder, or a URL (the Firebase site) | the suite's own logos (`apps/brand/`) |
+| Puter's source (`build-desktop.sh`) | `PUTER_GIT_URL` | – | – |
+
+A git server that cannot be reached keeps the copy already in `vendor/` (with a
+warning), so a GitHub outage does not stop a redeploy.
+
+### Git access: one read-only token for every server
+
+Servers clone and `git pull` four private repositories: the suite
+(`uw-backend`), the apps (`uw-frontend`), the site's logos (`uw-frontend-web`)
+and `puter-mirror`. One **fine-grained personal access token** covers all four (a deploy key cannot: GitHub allows each key
+on one repository only).
+
+1. **Make the token** (GitHub → Settings → Developer settings → Fine-grained
+   tokens): resource owner **UNIFY-DIGITAL**; *Only select repositories*: the
+   four above; *Repository permissions → Contents: Read-only* (Metadata is
+   added by itself); an expiry date (e.g. one year; diary the renewal). If the
+   organisation requires approval for fine-grained tokens, an owner approves
+   it. Best made by a bot account rather than a person, so it outlives
+   staff changes.
+2. **Keep it in Secret Manager**, not on the servers' disks (once, from a
+   laptop with project rights):
+
+   ```bash
+   gcloud services enable secretmanager.googleapis.com --project unifyworks
+   printf %s '<token>' | gcloud secrets create github-deploy-token --data-file=- --project unifyworks
+   gcloud secrets add-iam-policy-binding github-deploy-token --project unifyworks \
+     --member serviceAccount:unify-suite-vm@unifyworks.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor
+   ```
+
+   Renewing: `printf %s '<new token>' | gcloud secrets versions add github-deploy-token --data-file=- --project unifyworks`.
+   Every server uses the new one at its next `git pull`.
+3. **On each server** (once, as the deploy user): git asks the VM's service
+   account for the token whenever it talks to github.com:
+
+   ```bash
+   git config --global credential.https://github.com.helper \
+     '!f() { [ "$1" = get ] || exit 0; echo username=x-access-token; echo "password=$(gcloud secrets versions access latest --secret=github-deploy-token --project unifyworks)"; }; f'
+   ```
+
+   Use the HTTPS addresses (step 1 of *First-time deployment*); SSH addresses
+   would not use the token. The VM needs the `cloud-platform` access scope
+   (`unify-staging` has it).
+
+The token can only read code: it cannot push, and the servers never need to.
+Without Secret Manager, `git config --global credential.helper store` keeps it
+in `~/.git-credentials` (mode 600) instead.
+
+## Trial server
+
+A second, separate server where anyone can try the suite: the public site
+(`uw-frontend-web`, on Firebase) links each app to `<app>.<trial domain>`. It
+runs the same commit as staging; only `.env` differs:
+
+```bash
+SUITE_MODE=trial
+PUTER_DOMAIN=<trial domain>           # and the site's public/unify-config.json backend.domain
+GOOGLE_CLIENT_ID=...                  # Sign in with Google (below)
+GOOGLE_CLIENT_SECRET=...
+SMTP_RELAY_HOST=... (and _USER, _PASSWORD)   # only for sign-up with email (below)
+```
+
+What `trial` changes (`scripts/configure.sh` writes it into `config.json`; the
+extensions read it):
+
+| | organisation | trial |
+| --- | --- | --- |
+| Sign-up | off: administrators add people | on: email + password, or Google |
+| Guests | none | a first visit gets a temporary account at once; it can open the apps, save, and download files to the computer. Saving the account (email, password) keeps it; signing out deletes it |
+| Onboarding (mailbox, Email/Calendar access) | when an administrator adds someone | also at sign-up and when a guest saves the account (not for guests) |
+| Chat | everyone in the organisation's workspace | sign-ups get no seat (the one workspace would put strangers together) unless `TRIAL_CHAT=1` |
+| People directory (name suggestions) | everyone | empty: visitors never see each other |
+| Mail to outside addresses | through the relay | refused (`outside_mail_off`): no relaying for strangers. Mail between trial accounts works |
+
+**Sign-up with email needs a real relay**: Puter sends a code and the account
+waits for it. Without `SMTP_RELAY_*` the code lands in MailHog and the person
+is stuck; offer Google and guests only until a relay is set (a transactional
+mail service, or the company's Google Workspace relay, on port 587). Google
+sign-ups need no relay: Google has confirmed the address.
+
+**Sign in with Google**, once (Google Cloud console, project `unifyworks`):
+*Google Auth Platform* → *Branding* (app name, support email; audience
+*External*), *Audience* → *Publish app* (basic profile and email need no
+review), *Clients* → *Create client*, type *Web application*, authorised
+redirect URIs `https://<trial domain>/auth/oidc/callback/login`, `/signup` and
+`/revalidate`. Put the client ID and secret in `.env` and run
+`scripts/configure.sh && docker compose restart puter`. Any Google account,
+personal or a company's Workspace, can then sign in.
+
+Not built yet: removing guest accounts that were abandoned without signing out,
+limits per trial account (storage, how long a trial lasts), and a bot check:
+Puter's own captcha cannot be used, as it also guards guest sign-up, which the
+desktop sends without an answer.
 
 ## Verification
 
@@ -370,5 +495,5 @@ Staging is fit for internal testers; the items marked *before production* must b
 - [ ] Pin the images still on `latest` (and the major-version tags)
 - [ ] Open the firewall for calls (3478 UDP+TCP, the relay UDP range) and set `TURN_HOST` / `TURN_EXTERNAL_IP`
 - [ ] Staging VM, wildcard DNS and certificate, SMTP relay credentials, MX/SPF/DKIM/DMARC records
-- [ ] Real logo and wallpaper files for `apps/brand/`
+- [ ] `BRAND_SOURCE` in `.env` (the frontend's brand folder), `scripts/sync-brand.sh` run
 - [ ] Rehearse a backup restore once

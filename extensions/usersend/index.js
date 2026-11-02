@@ -25,6 +25,10 @@
  *   "userEmail":     { "localDomains": ["company1.example"], ... }   // shared with inbound
  *   "userEmailSend": { "relay": { "host": "...", "port": 587, "auth": {...} },
  *                      "maxRecipients": 50 }
+ *
+ * On a trial server ("unifyAdmin.mode": "trial") mail goes only between its own
+ * accounts: anyone can sign up there, so outside addresses are refused
+ * (`outside_mail_off`) rather than relayed for strangers.
  */
 // CommonJS, like the extensions built into the image: it is mounted at
 // /opt/puter/dist/extensions/usersend, where `@heyputer/backend/...` resolves
@@ -45,7 +49,8 @@ const LOCAL_DOMAINS = new Set(
 );
 const SEND = config.userEmailSend ?? {};
 const MAX_RECIPIENTS = Number(SEND.maxRecipients) || 50;
-const RELAY_OPTIONS = SEND.relay ?? config.email ?? null;
+const TRIAL = config.unifyAdmin?.mode === 'trial';
+const RELAY_OPTIONS = TRIAL ? null : SEND.relay ?? config.email ?? null;
 let relay = null;
 const getRelay = () => {
     if (!relay && RELAY_OPTIONS) relay = nodemailer.createTransport(RELAY_OPTIONS);
@@ -104,7 +109,7 @@ if (!LOCAL_DOMAINS.size) {
     console.warn('[usersend] userEmail.localDomains is empty - /email/send disabled');
 } else {
     console.log(`[usersend] /email/send enabled for ${[...LOCAL_DOMAINS].join(', ')}; ` +
-        `external relay: ${RELAY_OPTIONS ? `${RELAY_OPTIONS.host}:${RELAY_OPTIONS.port}` : 'none'}`);
+        `external relay: ${TRIAL ? 'off (trial server)' : RELAY_OPTIONS ? `${RELAY_OPTIONS.host}:${RELAY_OPTIONS.port}` : 'none'}`);
 
     extension.post('/email/send', { subdomain: 'api', requireAuth: true }, async (req, res) => {
         const actor = Context.get('actor');
@@ -189,7 +194,9 @@ if (!LOCAL_DOMAINS.size) {
 
         if (external.length) {
             const transport = getRelay();
-            if (!transport) {
+            if (TRIAL) {
+                for (const address of external) failed.push({ address, error: 'outside_mail_off' });
+            } else if (!transport) {
                 for (const address of external) failed.push({ address, error: 'no_relay_configured' });
             } else {
                 try {
