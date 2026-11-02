@@ -386,7 +386,7 @@ extensions read it):
 
 | | organisation | trial |
 | --- | --- | --- |
-| Sign-up | off: administrators add people | on: email + password, or Google |
+| Sign-up | off: administrators add people | Google; email + password only once a relay is set (`SMTP_RELAY_HOST`): without one, a typed address is refused with "use Google, or try as a guest" |
 | Guests | none | a first visit gets a temporary account at once; it can open the apps, save, and download files to the computer. Saving the account (email, password) keeps it; signing out deletes it |
 | Onboarding (mailbox, Email/Calendar access) | when an administrator adds someone | also at sign-up and when a guest saves the account (not for guests) |
 | Chat | everyone in the organisation's workspace | sign-ups get no seat (the one workspace would put strangers together) unless `TRIAL_CHAT=1` |

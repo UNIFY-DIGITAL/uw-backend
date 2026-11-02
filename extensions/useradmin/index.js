@@ -8,6 +8,8 @@
  *                 added accounts (a Chat seat only with "unifyAdmin.trialChat":
  *                 its one workspace is shared by everyone), and the people
  *                 directory is empty: visitors are strangers to each other.
+ *                 Without a mail relay ("unifyAdmin.emailSignup"), addresses typed
+ *                 by hand are refused (they wait for a code by mail): Google and guests only.
  *
  * Signed in as an administrator, from the desktop or the Admin app
  * (api.<domain>, the Admin console uses these):
@@ -74,6 +76,7 @@ const API = config.api_base_url || `${PROTO}://api.${DOMAIN}`;
 const CHAT_INTERNAL = config.unifyInternal?.chatUrl || 'http://chat:8787';
 const TRIAL = config.unifyAdmin?.mode === 'trial';
 const TRIAL_CHAT = TRIAL && config.unifyAdmin?.trialChat === true;
+const EMAIL_SIGNUP = config.unifyAdmin?.emailSignup === true;
 const MANIFEST = process.env.UNIFY_SUITE_APPS || '/etc/puter/suite-apps.json';
 const USERNAME = /^[a-z0-9_]{3,45}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -207,6 +210,23 @@ if (TRIAL) {
         if (!ev?.is_temp) onboardSignup(ev.user_id, 'signed up');
     });
     extension.on('user.save_account', (_key, ev) => onboardSignup(ev?.user_id, 'saved account'));
+
+    // Without a mail relay ("unifyAdmin.emailSignup" false: .env SMTP_RELAY_HOST
+    // unset), an address given by hand (the sign-up form, a guest saving the
+    // account, a change of address) waits for a code that never arrives.
+    // Refuse those with a way forward; Google's sign-in (/auth/oidc/...) has
+    // its address confirmed by Google and goes on.
+    if (!EMAIL_SIGNUP) {
+        extension.on('email.validate', (_key, ev) => {
+            // Puter treats a hook that throws as a refusal: never throw here.
+            let path = '';
+            try { const req = Context.get('req'); path = String(req?.originalUrl || req?.path || ''); } catch { return; }
+            if (!path || path.includes('/auth/oidc/')) return;
+            ev.allow = false;
+            ev.message = 'Sign-up with an email address is not open yet. Use "Sign in with Google", '
+                + 'or close this window to try the apps as a guest.';
+        });
+    }
 }
 
 /**
