@@ -44,9 +44,9 @@ PUTER_GIT_URL=${PUTER_GIT_URL:-https://github.com/HeyPuter/puter.git}
 # Clone it if missing, and make sure it fetches from PUTER_GIT_URL:  puter_source [fetch]
 puter_source() {
   local dir="$SUITE/vendor/puter"
-  [ -d "$dir/.git" ] || git clone -q --filter=blob:none "$PUTER_GIT_URL" "$dir"
-  [ "$(git -C "$dir" remote get-url origin)" = "$PUTER_GIT_URL" ] || git -C "$dir" remote set-url origin "$PUTER_GIT_URL"
-  [ "${1:-}" != fetch ] || git -C "$dir" fetch -q origin
+  [ -d "$dir/.git" ] || git clone -q --filter=blob:none "$PUTER_GIT_URL" "$dir" || return 1
+  [ "$(git -C "$dir" remote get-url origin)" = "$PUTER_GIT_URL" ] || git -C "$dir" remote set-url origin "$PUTER_GIT_URL" || return 1
+  [ "${1:-}" != fetch ] || git -C "$dir" fetch -q origin || return 1
 }
 
 # A repository the scripts read from git (the apps' source, the site's logos):

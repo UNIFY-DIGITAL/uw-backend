@@ -13,8 +13,14 @@ docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull -q "$IMAGE" >/dev/n
 PUTER_COMMIT=${PUTER_COMMIT:-$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')}
 [ -n "$PUTER_COMMIT" ] || { echo "the image $IMAGE has no revision label; set PUTER_COMMIT"; exit 1; }
 # A fresh checkout of the suite has no vendor/puter (not in git): clone Puter's
-# source once, from .env PUTER_GIT_URL (our mirror on servers).
-puter_source
+# source once, from .env PUTER_GIT_URL (our mirror on servers). A start before
+# the first build leaves only Docker's empty, root-owned mount folder
+# (vendor/puter/src/gui/dist), which git cannot clone into: clear it first.
+if [ -e "$SUITE/vendor/puter" ] && [ ! -d "$SUITE/vendor/puter/.git" ]; then
+  echo "clearing vendor/puter: Docker's empty mount folders, not a checkout"
+  docker run --rm -v "$SUITE/vendor:/v" "$ALPINE_IMAGE" rm -rf /v/puter
+fi
+puter_source || { echo "cannot get Puter's source from $PUTER_GIT_URL (.env PUTER_GIT_URL)"; exit 1; }
 git -C "$SUITE/vendor/puter" cat-file -e "$PUTER_COMMIT^{commit}" 2>/dev/null || puter_source fetch
 git -C "$SUITE/vendor/puter" checkout -q "$PUTER_COMMIT"
 echo "building the desktop at Puter ${PUTER_COMMIT:0:8} (the revision of $IMAGE)"

@@ -93,6 +93,7 @@ The rest:
 | `REGISTRY` | Where images come from: our Artifact Registry copy (`scripts/mirror-images.sh`). Unset = Docker Hub / GitHub, same digests | `asia-south1-docker.pkg.dev/unifyworks/unify-suite` |
 | `HTTP_PORT`, `HTTPS_PORT` | Ports Caddy publishes | `80`, `443` |
 | `PUTER_GIT_URL` | Where Puter's source comes from (desktop build, upgrades). Unset = HeyPuter's GitHub | `https://github.com/UNIFY-DIGITAL/puter-mirror.git` |
+| `ADMIN_PASSWORD` | Demo servers: a known password for `admin` (`scripts/seed-admin.sh`). Unset: Puter's random one, in its log | unset on real servers |
 | `SUITE_MODE` | `organisation` (administrators add people) or `trial` (public sign-up, Google, guests; *Trial server*) | `organisation` |
 | `SMTP_RELAY_HOST`, `_PORT`, `_USER`, `_PASSWORD` | Mail the server sends (sign-up codes, password resets; on an organisation server people's mail out). Unset: MailHog keeps it all | a relay on 587 (port 25 out is blocked on Google Cloud) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Sign in with Google. Unset: no Google button | trial server only, for now |
@@ -188,7 +189,7 @@ From an empty VM to a working suite is about twelve commands; the slow steps are
    docker compose --profile smtp up -d
    docker compose ps          # all running; puter becomes healthy in about a minute
    ```
-6. **Administrators**: Puter's bootstrap `admin` (password in `docker logs puter 2>&1 | grep "password for admin"`; sign in and change it, keep it in the secrets store), and named administrators, created from the server with no password of anyone (the internal secret):
+6. **Administrators**: Puter's bootstrap `admin` (password in `docker logs puter 2>&1 | grep "password for admin"`; sign in and change it, keep it in the secrets store; on a demo server `scripts/seed-admin.sh` sets `.env` `ADMIN_PASSWORD` instead), and named administrators, created from the server with no password of anyone (the internal secret):
 
    ```bash
    scripts/create-user.sh priya --admin --name "Priya Shah"   # prints a temporary password, changed at first sign-in

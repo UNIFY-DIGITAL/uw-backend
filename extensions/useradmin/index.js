@@ -37,6 +37,8 @@
  *   POST /unify/internal/apps                      register or update an app (scripts/deploy-apps.sh)
  *   POST /unify/internal/apps/:name/enabled        { enabled }: turn an app on or off for everyone
  *   POST /unify/internal/onboard-all               onboard every account again
+ *   POST /unify/internal/users/:username/password  { password }: set it (no change at sign-in),
+ *                                                  end its sessions, onboard it (scripts/seed-admin.sh)
  *   POST /unify/internal/mail-domain               { from, to }: move addresses to a new mail domain
  *
  * Onboarding, when an account is created or signs itself up (and on demand): its mailbox folder
@@ -530,6 +532,17 @@ extension.post('/unify/internal/apps', OPEN_ROUTE, asInternal(async (req, res) =
 
 extension.post('/unify/internal/apps/:name/enabled', OPEN_ROUTE, asInternal(async (req, res) => {
     reply(res, await setAppEnabled(lower(req.params.name), req.body?.enabled !== false));
+}));
+
+extension.post('/unify/internal/users/:username/password', OPEN_ROUTE, asInternal(async (req, res) => {
+    const row = await stores().user.getByUsername(lower(req.params.username));
+    if (!row || isService(row)) return fail(res, 404, 'not_found', `No account named ${req.params.username}.`);
+    const password = String(req.body?.password ?? '');
+    if (password.length < 8) return fail(res, 400, 'weak_password', 'Password: at least 8 characters.');
+    await stores().user.update(row.id, { password: await bcrypt.hash(password, 8), requires_password_change: 0 });
+    await endSessions(row.id);
+    log(`devops set the password of ${row.username}`);
+    res.json({ ok: true, user: publicUser(await stores().user.getById(row.id)), onboarding: await onboard(await stores().user.getById(row.id)) });
 }));
 
 extension.post('/unify/internal/onboard-all', OPEN_ROUTE, asInternal(async (req, res) => {

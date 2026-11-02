@@ -12,6 +12,11 @@ SUITE=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import json,sys; print(json.load(sys.stdin)[\"services\"][\"puter\"][\"image\"])")
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
+# A start before this ran leaves Docker's root-owned folder where the file goes.
+if [ -d "$OUT/PuterHomepageService.js" ]; then
+  . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
+  docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf /p/PuterHomepageService.js
+fi
 FILE=/opt/puter/dist/src/backend/services/homepage/PuterHomepageService.js
 docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/PuterHomepageService.js.orig"
 LINE='<link rel="preload" as="image" href="https://puter-assets.b-cdn.net/wallpaper.webp">'
