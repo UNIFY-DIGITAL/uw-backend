@@ -147,6 +147,18 @@ here + `scripts/deploy-apps.sh <name>`.
 
 ## First-time deployment
 
+**The short way**: after step 1 (the code) and filling in `.env` (step 2), one
+command does steps 2-9 in order and checks each one, stopping with the reason
+and the fix at the first problem. Safe to run again after fixing it:
+
+```bash
+scripts/provision.sh --check    # settings, Docker, registry sign-in, DNS: nothing started
+scripts/provision.sh            # configure, database login, desktop, start, admin, chat account, apps, final checks
+scripts/provision.sh --fresh    # the same, first deleting puter/data (asks you to type the domain)
+```
+
+The steps below are what it runs, for doing (or debugging) them one by one.
+
 From an empty VM to a working suite is about twelve commands; the slow steps are the image pulls and the app builds (about 15 minutes in all). Run everything as one non-root deploy user in the `docker` group, from the stack folder. The example domain is `stg.unify.works`.
 
 1. **Get the code** over HTTPS with the deploy token (*Git access* below sets it up once per VM):
