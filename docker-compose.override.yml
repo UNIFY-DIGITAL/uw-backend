@@ -28,6 +28,8 @@ services:
       # The desktop page without its preload of Puter's CDN wallpaper
       # (scripts/patch-puter.sh makes it from the pinned image; re-run on an image change).
       - ./puter/patches/PuterHomepageService.js:/opt/puter/dist/src/backend/services/homepage/PuterHomepageService.js:ro,z
+      # Google sign-ups named after their address, not a random guest-like name (same script).
+      - ./puter/patches/OIDCService.js:/opt/puter/dist/src/backend/services/auth/OIDCService.js:ro,z
       # The suite's app list, for the admin extension (Admin console, App Center, apps button).
       - ./suite-apps.json:/etc/puter/suite-apps.json:ro,z
       # The desktop rebuilt with our branding extension (scripts/build-desktop.sh,
@@ -108,6 +110,11 @@ services:
       CHAT_ORG_NAME: ${CHAT_ORG_NAME:-Unify Works}
       CHAT_ORG_AUTOJOIN: ${CHAT_ORG_AUTOJOIN:-true}
       CHAT_ORG_EXCLUDE: ${CHAT_ORG_EXCLUDE:-admin}
+      # Trial: everyone may create (and invite to) workspaces; the shared one only with TRIAL_CHAT=1.
+      SUITE_MODE: ${SUITE_MODE:-organisation}
+      TRIAL_CHAT: ${TRIAL_CHAT:-0}
+      # Admins of the organisation's workspace besides the suite's administrators.
+      CHAT_ADMINS: ${CHAT_ADMINS:-}
       # Chat -> Calendar: invitations shared in chat go to members' mailboxes.
       CHAT_MAIL_DOMAIN: ${MAIL_DOMAIN:?set MAIL_DOMAIN in .env}
       UNIFY_INTERNAL_SECRET: ${UNIFY_INTERNAL_SECRET:-}

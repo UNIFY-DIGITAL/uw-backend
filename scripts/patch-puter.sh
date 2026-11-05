@@ -7,16 +7,22 @@
 #                            default wallpaper from Puter's CDN
 #                            (puter-assets.b-cdn.net): our wallpaper is our own,
 #                            and nothing on the page should reach outside.
+#   OIDCService.js           a Google sign-up is named after its address
+#                            (harsh.rm@gmail.com -> harsh_rm, harsh_rm2 if
+#                            taken) instead of a random name like a guest's.
 set -euo pipefail
 SUITE=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import json,sys; print(json.load(sys.stdin)[\"services\"][\"puter\"][\"image\"])")
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
-# A start before this ran leaves Docker's root-owned folder where the file goes.
-if [ -d "$OUT/PuterHomepageService.js" ]; then
-  . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
-  docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf /p/PuterHomepageService.js
-fi
+# A start before this ran leaves Docker's root-owned folder where a file goes.
+for name in PuterHomepageService.js OIDCService.js; do
+  if [ -d "$OUT/$name" ]; then
+    . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
+    docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
+  fi
+done
+
 FILE=/opt/puter/dist/src/backend/services/homepage/PuterHomepageService.js
 docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/PuterHomepageService.js.orig"
 LINE='<link rel="preload" as="image" href="https://puter-assets.b-cdn.net/wallpaper.webp">'
@@ -25,3 +31,36 @@ COUNT=$(grep -cF "$LINE" "$OUT/PuterHomepageService.js.orig" || true)
 grep -vF "$LINE" "$OUT/PuterHomepageService.js.orig" > "$OUT/PuterHomepageService.js"
 rm "$OUT/PuterHomepageService.js.orig"
 echo "patched: $OUT/PuterHomepageService.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/services/auth/OIDCService.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/OIDCService.js.orig"
+python3 - "$OUT/OIDCService.js.orig" "$OUT/OIDCService.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+line = "const username = await (0, username_js_1.generateUsername)(this.stores);"
+if text.count(line) != 1:
+    sys.exit(f"patch no longer applies (found the username line {text.count(line)} times): review {src}")
+text = text.replace(line, "const username = (await unifyUsernameFromEmail(this.stores, email)) ?? await (0, username_js_1.generateUsername)(this.stores);")
+text += r"""
+// Unify Works (scripts/patch-puter.sh): a Google sign-up is named after its
+// address, harsh.rm@gmail.com -> harsh_rm (harsh_rm2, ... if taken), so it is
+// not mistaken for the random name a guest gets. Null (nothing usable, or a
+// reserved name like admin): Puter's random name.
+async function unifyUsernameFromEmail(stores, email) {
+    const base = String(email || '').split('@')[0].split('+')[0]
+        .normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        .replace(/\W+/g, '_').replace(/^_+|_+$/g, '')
+        .slice(0, username_js_1.USERNAME_MAX_LENGTH - 2);
+    if (!base || (0, username_js_1.usernameRejection)(base)) return null;
+    for (let n = 1; n < 100; n++) {
+        const candidate = n === 1 ? base : `${base}${n}`;
+        if (!(await (0, username_js_1.usernameConflict)(stores, candidate))) return candidate;
+    }
+    return null;
+}
+"""
+open(dst, "w").write(text)
+PY
+rm "$OUT/OIDCService.js.orig"
+echo "patched: $OUT/OIDCService.js (from $IMAGE)"

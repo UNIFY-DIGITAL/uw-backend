@@ -13,7 +13,7 @@
       "build": { "VITE_INVITES_VIA_EMAIL": "true", "VITE_MEETINGS_URL": "${ORIGIN}/app/meetings?m=" } },
     { "name": "teamchat", "host": "chat", "source": "teamchat", "title": "Chat", "description": "Team chat: channels, direct messages and threads with your colleagues",
       "worker": { "from": "worker", "build": "build:worker", "bundle": "public/worker/teamchat-worker.js", "to": "chat-server/teamchat-worker.js" },
-      "build": { "VITE_WORKER_URL": "${CHAT_API}", "VITE_MEETING_INVITES": "true", "VITE_MEETINGS_URL": "${ORIGIN}/app/meetings?m=" } },
+      "build": { "VITE_WORKER_URL": "${CHAT_API}", "VITE_APP_URL": "${ORIGIN}/app/teamchat", "VITE_EMAIL_WORKER_URL": "${CHAT_API}", "VITE_MEETING_INVITES": "true", "VITE_MEETINGS_URL": "${ORIGIN}/app/meetings?m=" } },
     { "name": "meetings", "host": "meet", "source": "meetings", "title": "Meetings", "description": "Video meetings with a link: camera, screen sharing, background blur",
       "worker": { "copy": "worker/rooms.js", "to": "chat-server/meetings-rooms.js" },
       "build": { "VITE_ROOMS_ORIGIN": "${CHAT_API}", "VITE_MEETING_LINK_BASE": "${ORIGIN}/app/meetings?m=", "VITE_BRAND_NAME": "${BRAND_NAME}", "VITE_GUEST_JOIN": "false" } },
@@ -25,6 +25,9 @@
     { "name": "notes", "host": "notes", "source": "notes", "title": "Notes", "description": "Notes and notebooks" },
     { "name": "tasks", "host": "tasks", "source": "tasks", "title": "Tasks", "description": "To-dos" },
     { "name": "projects", "host": "projects", "source": "projects", "title": "Projects", "description": "Boards and projects" },
+    { "name": "whiteboard", "host": "whiteboard", "source": "whiteboard", "title": "Whiteboard", "description": "Boards for sketching, diagrams and planning" },
+    { "name": "signatures", "host": "sign", "source": "signatures", "title": "Signatures", "description": "Prepare documents for signing and sign them" },
+    { "name": "records", "host": "records", "source": "records", "title": "Records", "description": "Tables, views and forms for your data" },
     { "name": "app-center", "host": "appcenter", "source": "suite:app-center", "title": "App Center", "description": "Find and open the apps of your organisation" },
     { "name": "admin", "host": "admin", "source": "suite:admin-console", "title": "Admin", "description": "Users and apps of your organisation", "adminOnly": true }
   ]

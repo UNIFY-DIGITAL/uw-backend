@@ -147,6 +147,7 @@ open it in a new tab):
 | Meetings | meet. | `meetings` | `meetings` (room directory: chat server) |
 | Contacts, Notes, Tasks, Projects, PDF | contacts., notes., tasks., projects., pdf. | `contacts`, `notes`, `tasks`, `projects`, `pdf-editor` | same names |
 | Documents, Spreadsheet, Presentation | docs., sheets., slides. | `word-processor`, `spreadsheet`, `presentation` | `documents`, `spreadsheet`, `presentation` |
+| Whiteboard, Signatures, Records | whiteboard., sign., records. | `whiteboard`, `signatures`, `records` | same names (sharing a board and sending for signature need Puter Workers: not on this server) |
 | App Center | appcenter. | `app-center` | `app-center/` |
 | Admin | admin. | `admin` | `admin-console/` |
 

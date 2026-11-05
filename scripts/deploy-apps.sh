@@ -54,7 +54,13 @@ in_node() {
     "$NODE_BUILD_IMAGE" "$@"
 }
 
+routes() { cat "$SUITE/caddy/apps.caddy" "$SUITE/nginx/apps.conf" 2>/dev/null | sha256sum; }
+before=$(routes)
 scripts/configure.sh >/dev/null
+# A new app's sub-domain: Caddy and the apps' web server read their routes only at start.
+if [ "$(routes)" != "$before" ] && docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then
+  docker compose restart caddy apps >/dev/null && echo "==> routes changed: caddy and apps restarted"
+fi
 
 want=("$@")
 [ ${#want[@]} -gt 0 ] || read -r -a want <<< "$(app_names)"

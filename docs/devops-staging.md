@@ -389,7 +389,7 @@ extensions read it):
 | Sign-up | off: administrators add people | Google; email + password only once a relay is set (`SMTP_RELAY_HOST`): without one, a typed address is refused with "use Google, or try as a guest" |
 | Guests | none | a first visit gets a temporary account at once; it can open the apps, save, and download files to the computer. Saving the account (email, password) keeps it; signing out deletes it |
 | Onboarding (mailbox, Email/Calendar access) | when an administrator adds someone | also at sign-up and when a guest saves the account (not for guests) |
-| Chat | everyone in the organisation's workspace | sign-ups get no seat (the one workspace would put strangers together) unless `TRIAL_CHAT=1` |
+| Chat | everyone in the organisation's workspace; administrators (and `CHAT_ADMINS`) are its admins, so they see its invite link and can invite guests to a channel | sign-ups get no seat in a shared workspace (it would put strangers together) unless `TRIAL_CHAT=1`; anyone may create workspaces of their own and invite people to them by link |
 | People directory (name suggestions) | everyone | empty: visitors never see each other |
 | Mail to outside addresses | through the relay | refused (`outside_mail_off`): no relaying for strangers. Mail between trial accounts works |
 
@@ -515,7 +515,7 @@ Staging is fit for internal testers; the items marked *before production* must b
 | Calendar | Picks up invitations only while the Calendar app is open (Puter's background handlers need Cloudflare workers) | it catches up on open; re-checks every minute while open |
 | Meetings | Guests without an account cannot join (no guest relay grants; outside the desktop Meetings would turn to puter.com). Calls are a mesh: fine to about 6-8 people on video | add accounts for guests; a media server (e.g. LiveKit) only if large meetings are needed |
 | Notifications | Live in-app; browser notifications if the user turns them on; no sound | — |
-| Chat | Chat email notifications and email invitations are off; web push and link previews need outbound internet | org members join automatically, so invites are not needed |
+| Chat | Chat email notifications and email invitations are off (Teamchat sends both through puter.com's email worker); web push and link previews need outbound internet | invite by link: admins copy it from the workspace menu ("Invite people"); the person needs an account on this server to open it |
 | Chat scale | Messages live in the chat service account's key-value store (one DynamoDB-local instance) | fine for a staging org; load-test before a large one |
 | Accounts | No admin screen to disable or delete accounts; no SAML, LDAP or SCIM | *before production*: decide on SSO (Puter supports OIDC sign-in) |
 | DynamoDB | `dynamodb-local` is an emulator, single node | *before production*: decide whether it is acceptable or move to a managed DynamoDB |

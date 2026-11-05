@@ -35,6 +35,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { createCalendarBridge } from './calendar-bridge.mjs';
+import { createInvites } from './invites.mjs';
 import { createSignaller } from './signaller.mjs';
 
 const env = (name, fallback) => {
@@ -54,7 +55,13 @@ const WORKER_BUNDLE = env('CHAT_WORKER_BUNDLE', new URL('./teamchat-worker.js', 
 const SERVICE_USER = env('CHAT_SERVICE_USER');
 const SERVICE_PASSWORD = env('CHAT_SERVICE_PASSWORD');
 const ORG_NAME = env('CHAT_ORG_NAME', 'Unify Works');
-const AUTOJOIN = env('CHAT_ORG_AUTOJOIN', 'true') === 'true';
+// A trial server's people are strangers: each may create workspaces of their
+// own (and invite whom they like to them); the one shared workspace only with TRIAL_CHAT=1.
+const TRIAL = env('SUITE_MODE', 'organisation') === 'trial';
+const AUTOJOIN = env('CHAT_ORG_AUTOJOIN', 'true') === 'true' && (!TRIAL || env('TRIAL_CHAT', '0') === '1');
+// Admins of the organisation's workspace (they see its invite link and can
+// invite guests to a channel): the suite's administrators, plus these usernames.
+const CHAT_ADMINS = new Set(env('CHAT_ADMINS', '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 // Accounts that are not people (the administrator, this service) never join.
 const NOT_PEOPLE = new Set(env('CHAT_ORG_EXCLUDE', 'admin').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 NOT_PEOPLE.add(SERVICE_USER.toLowerCase());
@@ -305,9 +312,28 @@ async function send(res, response, head) {
 }
 
 /**
- * POST /internal/onboard  {uuid, username}   a new account joins the organisation now,
- *                                            not on its first visit to Chat
- * POST /internal/offboard {uuid}             a removed account leaves it
+ * A member's role in the organisation's workspace: admin for the suite's
+ * administrators and CHAT_ADMINS, member otherwise. Guests and the owner are left alone.
+ */
+async function syncRole(serviceToken, uuid, username, admin) {
+  const doc = await globalThis.me.puter.kv.get(`tc:ws:${org.ws}`);
+  const role = doc?.members?.[uuid]?.role;
+  const want = admin || CHAT_ADMINS.has(username) ? 'admin' : 'member';
+  if (!(role === 'admin' || role === 'member') || role === want) return role || null;
+  const res = await dispatch(new Request(`http://chat.internal/api/ws/${org.ws}/members/${uuid}/role`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'puter-auth': serviceToken },
+    body: JSON.stringify({ role: want }),
+  }));
+  if (!res.ok) throw new Error(`role for ${username}: ${res.status} ${await res.text().catch(() => '')}`);
+  log(`${username} is now ${want === 'admin' ? 'an admin' : 'a member'} of "${ORG_NAME}"`);
+  return want;
+}
+
+/**
+ * POST /internal/onboard  {uuid, username, admin}  a new account joins the organisation now,
+ *                                                  not on its first visit to Chat; its role
+ *                                                  follows `admin` (again on every call)
+ * POST /internal/offboard {uuid}                   a removed account leaves it
  */
 async function internal(req, serviceToken) {
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -330,7 +356,8 @@ async function internal(req, serviceToken) {
       log(`${username} joined "${ORG_NAME}" (onboarded)`);
     }
     org.joined.add(uuid);
-    return json(200, { ok: true, workspace: org.ws });
+    const role = await syncRole(serviceToken, uuid, username, body.admin === true);
+    return json(200, { ok: true, workspace: org.ws, role });
   }
   if (req.url === '/internal/offboard') {
     org.joined.delete(uuid);
@@ -394,6 +421,9 @@ async function main() {
   // The service account claims this server on its first request (owner);
   // only it creates workspaces, so it holds the one the organisation uses.
   await call(serviceToken, 'GET', '/api/server');
+  // Trial: anyone may create a workspace (they own it, so they can invite to it).
+  const cfg = await call(serviceToken, 'PUT', '/api/server', { open: TRIAL });
+  log(TRIAL ? 'trial server: everyone may create workspaces' : 'organisation server: only this service creates workspaces', cfg.open ? '(open)' : '(closed)');
   if (AUTOJOIN) {
     await ensureOrg(serviceToken);
     setInterval(() => ensureOrg(serviceToken).catch((e) => log('invite renewal failed:', e.message)), 6 * 3600 * 1000).unref();
@@ -406,9 +436,19 @@ async function main() {
     whoami: (token) => callerPuter(token).auth.getUser(), excluded: NOT_PEOPLE, log,
   });
 
+  // Chat's email invitations (invites.mjs), sent as the person through our mail.
+  const invites = createInvites({
+    origin: ORIGIN, apiOrigin: API, mailDomain: MAIL_DOMAIN, secret: INTERNAL_SECRET,
+    whoami: (token) => callerPuter(token).auth.getUser(), log,
+  });
+
   const server = http.createServer(async (req, res) => {
     try {
       if (req.url === '/healthz') return send(res, new Response('ok'));
+      if (new URL(req.url, 'http://x').pathname === '/invites') {
+        const raw = req.method === 'POST' ? await readSmall(req, 64 * 1024) : Buffer.alloc(0);
+        return send(res, await invites.handle(req.method, String(req.headers['puter-auth'] || ''), raw));
+      }
       if (req.url === '/peer/generate-turn') return send(res, await signaller.generateTurn(toRequest(req)));
       // The suite's own calls (Puter's admin extension), never from outside:
       // Caddy refuses /internal/ on chat-api.<domain>, and each needs the secret.

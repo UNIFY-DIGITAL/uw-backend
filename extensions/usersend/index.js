@@ -123,7 +123,12 @@ if (!LOCAL_DOMAINS.size) {
         // An app sending for a user needs the same grant that lets it write
         // the Sent copy: write access to the user's mailbox.
         const mailbox = `/${user.username}/.mail`;
-        if (actor.effectiveApp) {
+        // The suite's own servers (Chat's email invitations, chat-server/invites.mjs)
+        // compose the message themselves and say so with the internal secret: the
+        // app they act for needs no grant to the mailbox. Still sent as this user.
+        const given = req.headers['x-unify-secret'];
+        const vouched = !!INTERNAL_SECRET && typeof given === 'string' && sameSecret(given, INTERNAL_SECRET);
+        if (actor.effectiveApp && !vouched) {
             let allowed = false;
             try {
                 allowed = await services.permission.check(actor, `fs:${mailbox}:write`);

@@ -159,13 +159,42 @@ async function chat(path, body) {
     }
 }
 
+// ------------------------------------------------------------------ Puter's own apps
+
+// Puter's apps only administrators see: Dev Center publishes apps to this server.
+const ADMIN_ONLY_PUTER_APPS = new Set(['dev-center']);
+// Puter's taskbar for an account that has never had one (backend/util/taskbarItems.ts).
+const PUTER_DEFAULT_TASKBAR = ['app-center', 'builder', 'dev-center', 'editor', 'code', 'camera', 'recorder', 'browser'];
+
+// The desktop's app grid ("recommended"): the suite's apps join Puter's list
+// (Puter's standard names are already on it), and only administrators get Dev Center.
+extension.on('app.recommended', async (_key, ev) => {
+    if (!Array.isArray(ev?.appNames)) return;
+    for (const a of manifestApps()) if (!a.adminOnly && !ev.appNames.includes(a.name)) ev.appNames.push(a.name);
+    if (await currentAdmin().catch(() => null)) return;
+    ev.appNames = ev.appNames.filter((name) => !ADMIN_ONLY_PUTER_APPS.has(name));
+});
+
+/** An account's taskbar without the administrators' apps, unless it is an administrator. */
+async function tidyTaskbar(userId) {
+    const row = await stores().user.getById(userId);
+    if (!row || isAdmin(row)) return false;
+    const saved = safeJson(row.taskbar_items);
+    const items = Array.isArray(saved) ? saved : PUTER_DEFAULT_TASKBAR.map((name) => ({ name, type: 'app' }));
+    const kept = items.filter((i) => !ADMIN_ONLY_PUTER_APPS.has(i?.name));
+    if (Array.isArray(saved) && kept.length === items.length) return false;
+    await stores().user.update(row.id, { taskbar_items: JSON.stringify(kept) });
+    return true;
+}
+
 /**
  * Ready an account before its first sign-in: its mailbox folder, Email and
- * Calendar allowed into it, and a seat in the organisation's Chat (on a trial
- * server only with "unifyAdmin.trialChat").
+ * Calendar allowed into it, a seat in the organisation's Chat (on a trial
+ * server only with "unifyAdmin.trialChat"), and a taskbar without Dev Center.
  */
 async function onboard(row) {
     const result = { mailbox: false, grants: [], chat: null };
+    try { result.taskbar = await tidyTaskbar(row.id); } catch (e) { log(`taskbar for ${row.username}:`, e.message); }
     const mailbox = `/${row.username}/.mail`;
     try {
         if (!(await stores().fsEntry.getEntryByPath(mailbox))) {
@@ -189,7 +218,7 @@ async function onboard(row) {
     }
     result.chat = TRIAL && !TRIAL_CHAT
         ? { skipped: 'trial server' }
-        : await chat('/internal/onboard', { uuid: row.uuid, username: row.username });
+        : await chat('/internal/onboard', { uuid: row.uuid, username: row.username, admin: isAdmin(row) });
     return result;
 }
 
@@ -208,6 +237,8 @@ if (TRIAL) {
     };
     extension.on('puter.signup.success', (_key, ev) => {
         if (!ev?.is_temp) onboardSignup(ev.user_id, 'signed up');
+        // A guest is not onboarded, but gets the same taskbar.
+        else tidyTaskbar(ev.user_id).catch((e) => log('guest taskbar:', e.message));
     });
     extension.on('user.save_account', (_key, ev) => onboardSignup(ev?.user_id, 'saved account'));
 
@@ -449,6 +480,8 @@ extension.patch('/unify/admin/users/:username', API_ROUTE, asAdmin(async (req, r
         if (!body.admin && self) return fail(res, 400, 'self', 'You cannot remove your own administrator role.');
         await stores().user.updateMetadata(row.id, { unify: { ...unifyMeta(row), admin: body.admin } });
         log(`${admin.username} ${body.admin ? 'made' : 'removed'} ${row.username} ${body.admin ? 'an administrator' : 'as administrator'}`);
+        // Administrators are admins of the organisation's Chat too (they can invite people).
+        if (!(TRIAL && !TRIAL_CHAT)) out.chat = await chat('/internal/onboard', { uuid: row.uuid, username: row.username, admin: body.admin });
     }
     if (typeof body.name === 'string') {
         const fresh = await stores().user.getById(row.id);
