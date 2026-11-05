@@ -35,4 +35,5 @@ node_modules/
 *.log
 .deploy-plan
 .chat-changed
+.routes-loaded
 *.tgz

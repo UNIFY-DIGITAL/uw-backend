@@ -54,13 +54,16 @@ in_node() {
     "$NODE_BUILD_IMAGE" "$@"
 }
 
-routes() { cat "$SUITE/caddy/apps.caddy" "$SUITE/nginx/apps.conf" 2>/dev/null | sha256sum; }
-before=$(routes)
 scripts/configure.sh >/dev/null
-# A new app's sub-domain: Caddy and the apps' web server read their routes only at start.
-if [ "$(routes)" != "$before" ] && docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then
+# A new app's sub-domain: Caddy and the apps' web server read their routes only
+# at start. .routes-loaded holds the routes they last started with, so a change
+# is caught whoever wrote it (provision.sh runs configure.sh before this).
+routes=$(cat "$SUITE/caddy/apps.caddy" "$SUITE/caddy/sites.caddy" "$SUITE/nginx/apps.conf" 2>/dev/null | sha256sum | cut -c1-64)
+if [ "$routes" != "$(cat "$SUITE/.routes-loaded" 2>/dev/null)" ] \
+   && docker compose ps --status running --services 2>/dev/null | grep -qx caddy; then
   docker compose restart caddy apps >/dev/null && echo "==> routes changed: caddy and apps restarted"
 fi
+echo "$routes" > "$SUITE/.routes-loaded"
 
 want=("$@")
 [ ${#want[@]} -gt 0 ] || read -r -a want <<< "$(app_names)"
