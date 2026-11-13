@@ -184,6 +184,16 @@ handle @chat_api {{
 handle @turn {{
 	reverse_proxy chat:8787
 }}
+
+# The tab icon a browser asks for by itself (/favicon.ico) while the desktop
+# loads, before it reads the page: our logo, as on the website, not Puter's.
+@favicon {{
+	header_regexp Host ^{d}(:\\d+)?$
+	path /favicon.ico
+}}
+handle @favicon {{
+	redir {env['BRAND_URL']}/logo.svg 302
+}}
 """
 os.makedirs(f"{suite}/caddy", exist_ok=True)
 open(f"{suite}/caddy/apps.caddy", "w").write(caddy)
