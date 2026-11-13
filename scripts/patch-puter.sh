@@ -7,6 +7,8 @@
 #                            default wallpaper from Puter's CDN
 #                            (puter-assets.b-cdn.net): our wallpaper is our own,
 #                            and nothing on the page should reach outside.
+#                            Its tab icon is our logo (brand.<domain>/logo.svg,
+#                            as on the website), not Puter's favicons.
 #   OIDCService.js           a Google sign-up is named after its address
 #                            (harsh.rm@gmail.com -> harsh_rm, harsh_rm2 if
 #                            taken) instead of a random name like a guest's.
@@ -28,7 +30,21 @@ docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/PuterHomepageService.j
 LINE='<link rel="preload" as="image" href="https://puter-assets.b-cdn.net/wallpaper.webp">'
 COUNT=$(grep -cF "$LINE" "$OUT/PuterHomepageService.js.orig" || true)
 [ "$COUNT" = 1 ] || { echo "patch no longer applies (found the preload $COUNT times): review $OUT/PuterHomepageService.js.orig"; exit 1; }
-grep -vF "$LINE" "$OUT/PuterHomepageService.js.orig" > "$OUT/PuterHomepageService.js"
+grep -vF "$LINE" "$OUT/PuterHomepageService.js.orig" > "$OUT/PuterHomepageService.js.nopreload"
+# The tab icon: our logo (gui_params.brand_logo_url, brand.<domain>/logo.svg, as on
+# the website) in place of Puter's four PNG favicons; Puter's when no logo is set.
+python3 - "$OUT/PuterHomepageService.js.nopreload" "$OUT/PuterHomepageService.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+lines = open(src).read().split("\n")
+icons = [i for i, l in enumerate(lines) if '<link rel="icon" type="image/png"' in l and "/favicons/" in l]
+if len(icons) != 4 or icons != list(range(icons[0], icons[0] + 4)):
+    sys.exit(f"patch no longer applies (found {len(icons)} favicon lines, expected 4 together): review {src}")
+indent = lines[icons[0]][: len(lines[icons[0]]) - len(lines[icons[0]].lstrip())]
+lines[icons[0]:icons[0] + 4] = [indent + """<link rel="icon" href="${String(guiParams.brand_logo_url || assetDir + '/favicons/favicon-32x32.png').replace(/"/g, '&quot;')}">"""]
+open(dst, "w").write("\n".join(lines))
+PY
+rm "$OUT/PuterHomepageService.js.nopreload"
 rm "$OUT/PuterHomepageService.js.orig"
 echo "patched: $OUT/PuterHomepageService.js (from $IMAGE)"
 
