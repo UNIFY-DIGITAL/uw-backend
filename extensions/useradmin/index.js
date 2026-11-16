@@ -3,13 +3,14 @@
  * onboarding. config.json "unifyAdmin.mode" (.env SUITE_MODE, scripts/configure.sh):
  *
  *   organisation  people cannot sign themselves up; administrators add them
- *   trial         a public trial server: anyone signs up (email, Google) or tries
+ *   trial         a public trial server: anyone signs up (email, Google, Microsoft,
+ *                 Apple) or tries
  *                 the apps as a temporary guest. Sign-ups are onboarded like
  *                 added accounts (a Chat seat only with "unifyAdmin.trialChat":
  *                 its one workspace is shared by everyone), and the people
  *                 directory is empty: visitors are strangers to each other.
  *                 Without a mail relay ("unifyAdmin.emailSignup"), addresses typed
- *                 by hand are refused (they wait for a code by mail): Google and guests only.
+ *                 by hand are refused (they wait for a code by mail): sign-in buttons and guests only.
  *
  * Signed in as an administrator, from the desktop or the Admin app
  * (api.<domain>, the Admin console uses these):
@@ -77,6 +78,9 @@ const CHAT_INTERNAL = config.unifyInternal?.chatUrl || 'http://chat:8787';
 const TRIAL = config.unifyAdmin?.mode === 'trial';
 const TRIAL_CHAT = TRIAL && config.unifyAdmin?.trialChat === true;
 const EMAIL_SIGNUP = config.unifyAdmin?.emailSignup === true;
+// The sign-in buttons this server shows (config.oidc.providers), named in messages.
+const SSO_NAMES = { google: 'Google', microsoft: 'Microsoft', apple: 'Apple' };
+const SSO = Object.keys(config.oidc?.providers ?? {}).map((p) => SSO_NAMES[p] || p);
 const MANIFEST = process.env.UNIFY_SUITE_APPS || '/etc/puter/suite-apps.json';
 const USERNAME = /^[a-z0-9_]{3,45}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -251,7 +255,7 @@ async function onboard(row) {
     return result;
 }
 
-// A trial server's sign-ups (email or Google), and guests who keep their
+// A trial server's sign-ups (email or a sign-in button), and guests who keep their
 // account (a temporary user saving it), are onboarded as an added account is.
 // Temporary guests are not: they have no address, and go when they sign out.
 if (TRIAL) {
@@ -274,8 +278,8 @@ if (TRIAL) {
     // Without a mail relay ("unifyAdmin.emailSignup" false: .env SMTP_RELAY_HOST
     // unset), an address given by hand (the sign-up form, a guest saving the
     // account, a change of address) waits for a code that never arrives.
-    // Refuse those with a way forward; Google's sign-in (/auth/oidc/...) has
-    // its address confirmed by Google and goes on.
+    // Refuse those with a way forward; a sign-in through Google, Microsoft or
+    // Apple (/auth/oidc/...) has its address confirmed by the provider and goes on.
     if (!EMAIL_SIGNUP) {
         extension.on('email.validate', (_key, ev) => {
             // Puter treats a hook that throws as a refusal: never throw here.
@@ -283,8 +287,8 @@ if (TRIAL) {
             try { const req = Context.get('req'); path = String(req?.originalUrl || req?.path || ''); } catch { return; }
             if (!path || path.includes('/auth/oidc/')) return;
             ev.allow = false;
-            ev.message = 'Sign-up with an email address is not open yet. Use "Sign in with Google", '
-                + 'or close this window to try the apps as a guest.';
+            const sso = SSO.length ? `Use ${SSO.map((n) => `"Sign in with ${n}"`).join(' or ')}, or close` : 'Close';
+            ev.message = `Sign-up with an email address is not open yet. ${sso} this window to try the apps as a guest.`;
         });
     }
 }

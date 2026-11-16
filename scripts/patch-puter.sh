@@ -9,7 +9,7 @@
 #                            and nothing on the page should reach outside.
 #                            Its tab icon is our logo (brand.<domain>/logo.svg,
 #                            as on the website), not Puter's favicons.
-#   OIDCService.js           a Google sign-up is named after its address
+#   OIDCService.js           a Google, Microsoft or Apple sign-up is named after its address
 #                            (harsh.rm@gmail.com -> harsh_rm, harsh_rm2 if
 #                            taken) instead of a random name like a guest's.
 #   SuggestedAppsService.js  a double-click opens a file in the suite's app
@@ -63,7 +63,7 @@ if text.count(line) != 1:
     sys.exit(f"patch no longer applies (found the username line {text.count(line)} times): review {src}")
 text = text.replace(line, "const username = (await unifyUsernameFromEmail(this.stores, email)) ?? await (0, username_js_1.generateUsername)(this.stores);")
 text += r"""
-// Unify Works (scripts/patch-puter.sh): a Google sign-up is named after its
+// Unify Works (scripts/patch-puter.sh): a sign-up through Google, Microsoft or Apple is named after its
 // address, harsh.rm@gmail.com -> harsh_rm (harsh_rm2, ... if taken), so it is
 // not mistaken for the random name a guest gets. Null (nothing usable, or a
 // reserved name like admin): Puter's random name.

@@ -6,6 +6,8 @@
 !.env.production.example
 puter/config/config.json
 puter/tls/
+secrets/
+*.p8
 
 # Data and backups (back them up, don't version them)
 puter/data/

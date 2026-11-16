@@ -6,7 +6,8 @@
 #                              shares with .env (database, storage keys, internal secret);
 #                              its own secrets are made once if still CHANGE_ME; the kind
 #                              of server (SUITE_MODE: sign-up, guests), the mail relay
-#                              (SMTP_RELAY_*) and Google sign-in (GOOGLE_CLIENT_*)
+#                              (SMTP_RELAY_*) and sign-in with Google,
+#                              Microsoft and Apple (GOOGLE_*, MICROSOFT_*, APPLE_*)
 #   caddy/apps.caddy           one route per app sub-domain (<host>.<domain>),
 #                              the chat back end (chat-api.), relay logins
 #   caddy/sites.caddy          HTTP or HTTPS and the certificates (.env TLS_MODE)
@@ -131,6 +132,36 @@ if env.get("GOOGLE_CLIENT_ID"):
     providers["google"] = {"client_id": env["GOOGLE_CLIENT_ID"], "client_secret": env["GOOGLE_CLIENT_SECRET"]}
 else:
     providers.pop("google", None)
+# Sign in with Microsoft (.env MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET, an
+# Entra app registration with the same three redirect URIs; MICROSOFT_TENANT_ID:
+# common (default: work and personal accounts), organizations, consumers, or
+# one tenant's ID). Unset: no Microsoft button.
+if env.get("MICROSOFT_CLIENT_ID"):
+    if env.get("MICROSOFT_CLIENT_SECRET", "CHANGE_ME") in ("", "CHANGE_ME"):
+        sys.exit("set MICROSOFT_CLIENT_SECRET in .env (or unset MICROSOFT_CLIENT_ID)")
+    providers["microsoft"] = {"client_id": env["MICROSOFT_CLIENT_ID"], "client_secret": env["MICROSOFT_CLIENT_SECRET"],
+                              "tenant_id": env.get("MICROSOFT_TENANT_ID") or "common"}
+else:
+    providers.pop("microsoft", None)
+# Sign in with Apple (.env APPLE_CLIENT_ID, the Services ID; APPLE_TEAM_ID;
+# APPLE_KEY_ID and APPLE_PRIVATE_KEY_FILE, the .p8 key Apple issued for it).
+# Puter signs Apple's short-lived client secret from the key itself. HTTPS
+# only: Apple accepts no http:// or localhost return URL. Unset: no Apple button.
+if env.get("APPLE_CLIENT_ID"):
+    missing = [k for k in ("APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY_FILE") if not env.get(k)]
+    if missing:
+        sys.exit(f"set {', '.join(missing)} in .env (or unset APPLE_CLIENT_ID)")
+    key_path = os.path.join(suite, os.path.expanduser(env["APPLE_PRIVATE_KEY_FILE"]))
+    try:
+        key = open(key_path).read().strip()
+    except OSError as e:
+        sys.exit(f"APPLE_PRIVATE_KEY_FILE: cannot read {key_path} ({e.strerror})")
+    if "BEGIN PRIVATE KEY" not in key:
+        sys.exit(f"APPLE_PRIVATE_KEY_FILE: {key_path} is not the .p8 key Apple issued")
+    providers["apple"] = {"client_id": env["APPLE_CLIENT_ID"], "team_id": env["APPLE_TEAM_ID"],
+                          "key_id": env["APPLE_KEY_ID"], "private_key": key}
+else:
+    providers.pop("apple", None)
 # The key-value store (DynamoDB Local, only Puter talks to it): any keys, made
 # once, but the emulator refuses an access key that is not letters and digits
 # (the template's CHANGE_ME, with its "_", is refused: Puter does not start).
@@ -265,5 +296,5 @@ server {{
 """
 os.makedirs(f"{suite}/nginx", exist_ok=True)
 open(f"{suite}/nginx/apps.conf", "w").write(nginx)
-print(f"configured for {proto}://{domain} ({kind}; TLS {mode}; mail @{mail}{'; Google sign-in' if 'google' in providers else ''}); apps: " + ", ".join(f"{a['host']}.{domain}" for a in apps))
+print(f"configured for {proto}://{domain} ({kind}; TLS {mode}; mail @{mail}{'; sign-in: ' + ', '.join(sorted(providers)) if providers else ''}); apps: " + ", ".join(f"{a['host']}.{domain}" for a in apps))
 PY
