@@ -24,7 +24,11 @@
  * Config (`config.json`):
  *   "userEmail":     { "localDomains": ["company1.example"], ... }   // shared with inbound
  *   "userEmailSend": { "relay": { "host": "...", "port": 587, "auth": {...} },
- *                      "maxRecipients": 50 }
+ *                      "maxRecipients": 50,
+ *                      "sharedDomain": true }   // other mailboxes of the domain live on
+ *                                               // the relay's server (mailcow): a local
+ *                                               // address with no account here goes there
+ *                                               // (support@...) instead of failing
  *
  * On a trial server ("unifyAdmin.mode": "trial") mail goes only between its own
  * accounts: anyone can sign up there, so outside addresses are refused
@@ -51,6 +55,7 @@ const SEND = config.userEmailSend ?? {};
 const MAX_RECIPIENTS = Number(SEND.maxRecipients) || 50;
 const TRIAL = config.unifyAdmin?.mode === 'trial';
 const RELAY_OPTIONS = TRIAL ? null : SEND.relay ?? config.email ?? null;
+const SHARED_DOMAIN = SEND.sharedDomain === true && !!RELAY_OPTIONS;
 let relay = null;
 const getRelay = () => {
     if (!relay && RELAY_OPTIONS) relay = nodemailer.createTransport(RELAY_OPTIONS);
@@ -186,7 +191,9 @@ if (!LOCAL_DOMAINS.size) {
             try {
                 const owner = await stores.user.getByUsername(localPartOf(address));
                 if (!owner || isTempUser(owner)) {
-                    failed.push({ address, error: 'no_such_user' });
+                    // A mailbox of the shared domain on the other server (support@...).
+                    if (SHARED_DOMAIN && !owner) external.push(address);
+                    else failed.push({ address, error: 'no_such_user' });
                     continue;
                 }
                 await storeInboxMessage(services.fs, owner, { subject, content: raw, size: raw.length });

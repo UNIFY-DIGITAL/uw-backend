@@ -6,7 +6,7 @@
 #                              shares with .env (database, storage keys, internal secret);
 #                              its own secrets are made once if still CHANGE_ME; the kind
 #                              of server (SUITE_MODE: sign-up, guests), the mail relay
-#                              (SMTP_RELAY_*) and sign-in with Google,
+#                              (SMTP_RELAY_*, MAIL_FROM) and sign-in with Google,
 #                              Microsoft and Apple (GOOGLE_*, MICROSOFT_*, APPLE_*)
 #   caddy/apps.caddy           one route per app sub-domain (<host>.<domain>),
 #                              the chat back end (chat-api.), relay logins
@@ -116,12 +116,17 @@ ua["hiddenPuterApps"] = [n.strip().lower() for n in env.get("HIDDEN_PUTER_APPS",
 relay = env.get("SMTP_RELAY_HOST", "")
 if relay:
     port = int(env.get("SMTP_RELAY_PORT") or 587)
-    t = {"from": c.get("email", {}).get("from"), "host": relay, "port": port, "secure": port == 465}
+    sender = env.get("MAIL_FROM") or c.get("email", {}).get("from")
+    t = {"from": sender, "host": relay, "port": port, "secure": port == 465}
     if env.get("SMTP_RELAY_USER"):
         if env.get("SMTP_RELAY_PASSWORD", "CHANGE_ME") in ("", "CHANGE_ME"):
             sys.exit("set SMTP_RELAY_PASSWORD in .env (or unset SMTP_RELAY_USER)")
         t["auth"] = {"user": env["SMTP_RELAY_USER"], "pass": env["SMTP_RELAY_PASSWORD"]}
     c["email"] = t
+# MAIL_DOMAIN shared with the relay's own mail server (.env MAIL_DOMAIN_SHARED=1:
+# mailcow keeps support@ and no-reply@ of the same domain): people's mail to an
+# address of the domain with no account here goes to the relay, not "no such user".
+c.setdefault("userEmailSend", {})["sharedDomain"] = env.get("MAIL_DOMAIN_SHARED") == "1"
 
 # Sign in with Google (.env GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET, an OAuth
 # client for <proto>://<domain>/auth/oidc/callback/{login,signup,revalidate}). Unset: no Google button.
