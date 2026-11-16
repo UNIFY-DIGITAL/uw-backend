@@ -163,34 +163,72 @@ async function chat(path, body) {
 
 // Puter's apps only administrators see: Dev Center publishes apps to this server.
 const ADMIN_ONLY_PUTER_APPS = new Set(['dev-center']);
+// Puter's apps nobody sees (.env HIDDEN_PUTER_APPS): its PDF viewer, as the suite has its own.
+const HIDDEN_PUTER_APPS = new Set((config.unifyAdmin?.hiddenPuterApps ?? ['pdf']).map(lower));
 // Puter's taskbar for an account that has never had one (backend/util/taskbarItems.ts).
 const PUTER_DEFAULT_TASKBAR = ['app-center', 'builder', 'dev-center', 'editor', 'code', 'camera', 'recorder', 'browser'];
 
 // The desktop's app grid ("recommended"): the suite's apps join Puter's list
-// (Puter's standard names are already on it), and only administrators get Dev Center.
+// (Puter's standard names are already on it), without the hidden ones, and only
+// administrators get Dev Center.
 extension.on('app.recommended', async (_key, ev) => {
     if (!Array.isArray(ev?.appNames)) return;
     for (const a of manifestApps()) if (!a.adminOnly && !ev.appNames.includes(a.name)) ev.appNames.push(a.name);
+    ev.appNames = ev.appNames.filter((name) => !HIDDEN_PUTER_APPS.has(name));
     if (await currentAdmin().catch(() => null)) return;
     ev.appNames = ev.appNames.filter((name) => !ADMIN_ONLY_PUTER_APPS.has(name));
 });
 
-/** An account's taskbar without the administrators' apps, unless it is an administrator. */
+/** An account's taskbar without the hidden apps, nor the administrators' unless it is an administrator. */
 async function tidyTaskbar(userId) {
     const row = await stores().user.getById(userId);
-    if (!row || isAdmin(row)) return false;
+    if (!row) return false;
+    const admin = isAdmin(row);
     const saved = safeJson(row.taskbar_items);
     const items = Array.isArray(saved) ? saved : PUTER_DEFAULT_TASKBAR.map((name) => ({ name, type: 'app' }));
-    const kept = items.filter((i) => !ADMIN_ONLY_PUTER_APPS.has(i?.name));
-    if (Array.isArray(saved) && kept.length === items.length) return false;
+    const kept = items.filter((i) => !HIDDEN_PUTER_APPS.has(i?.name) && (admin || !ADMIN_ONLY_PUTER_APPS.has(i?.name)));
+    if (kept.length === items.length) return false;
     await stores().user.update(row.id, { taskbar_items: JSON.stringify(kept) });
     return true;
 }
 
 /**
+ * What the suite's own apps may do for a person without asking them first.
+ * Email reads and sends their mail. Calendar sends invitations as them
+ * (their address, their mailbox) and picks invitations up from their mailbox,
+ * also while it is closed; without these it asked three times, and an
+ * invitation stayed unsent until all three were allowed.
+ */
+const appGrants = (row) => {
+    const mailbox = `/${row.username}/.mail`;
+    return {
+        email: [`fs:${mailbox}:read`, `fs:${mailbox}:write`],
+        calendar: [`fs:${mailbox}:read`, `fs:${mailbox}:write`, `user:${row.uuid}:email:read`, 'events:background'],
+    };
+};
+
+/** Give the suite's apps what appGrants lists for this person; returns what was granted. */
+async function grantApps(row) {
+    const actor = makeActor({ user: row });
+    const granted = [];
+    for (const [app, permissions] of Object.entries(appGrants(row))) {
+        if (!(await stores().app.getByName(app))) continue;
+        for (const permission of permissions) {
+            try {
+                await services().permission.grantUserAppPermission(actor, app, permission);
+                granted.push(`${app}:${permission.split(':').pop()}`);
+            } catch (e) {
+                log(`grant ${app} ${permission} for ${row.username}:`, e.message);
+            }
+        }
+    }
+    return granted;
+}
+
+/**
  * Ready an account before its first sign-in: its mailbox folder, Email and
- * Calendar allowed into it, a seat in the organisation's Chat (on a trial
- * server only with "unifyAdmin.trialChat"), and a taskbar without Dev Center.
+ * Calendar allowed into it (appGrants), a seat in the organisation's Chat (on
+ * a trial server only with "unifyAdmin.trialChat"), and a taskbar without Dev Center.
  */
 async function onboard(row) {
     const result = { mailbox: false, grants: [], chat: null };
@@ -204,21 +242,12 @@ async function onboard(row) {
     } catch (e) {
         log(`mailbox for ${row.username}:`, e.message);
     }
-    const actor = makeActor({ user: row });
-    for (const [app, modes] of [['email', ['read', 'write']], ['calendar', ['read']]]) {
-        if (!(await stores().app.getByName(app))) continue;
-        for (const mode of modes) {
-            try {
-                await services().permission.grantUserAppPermission(actor, app, `fs:${mailbox}:${mode}`);
-                result.grants.push(`${app}:${mode}`);
-            } catch (e) {
-                log(`grant ${app} ${mode} for ${row.username}:`, e.message);
-            }
-        }
-    }
+    result.grants = await grantApps(row);
     result.chat = TRIAL && !TRIAL_CHAT
         ? { skipped: 'trial server' }
-        : await chat('/internal/onboard', { uuid: row.uuid, username: row.username, admin: isAdmin(row) });
+        // Onboarding only promotes (administrators are Chat admins); a Chat admin
+        // made in Chat itself is kept. Demotion is the Admin app's toggle (below).
+        : await chat('/internal/onboard', { uuid: row.uuid, username: row.username, ...(isAdmin(row) ? { admin: true } : {}) });
     return result;
 }
 
@@ -371,7 +400,7 @@ async function ownerId() {
     throw new Error('no administrator account to own the app');
 }
 
-async function registerApp({ name, title, url, description, icon, adminOnly }) {
+async function registerApp({ name, title, url, description, icon, adminOnly, opens }) {
     name = lower(name);
     if (!APP_NAME.test(name)) return { status: 400, code: 'bad_name', message: 'App name: lower-case letters, digits and hyphens.' };
     if (!title) return { status: 400, code: 'bad_title', message: 'A title is required.' };
@@ -390,6 +419,8 @@ async function registerApp({ name, title, url, description, icon, adminOnly }) {
         app = await stores().app.create(fields, { ownerUserId: await ownerId() });
         await approve(app, { adminOnly: !!adminOnly }, !adminOnly);
     }
+    // The file types it opens on a double-click (suite-apps.json "opens"); left as they are when not given.
+    if (Array.isArray(opens)) await stores().app.setFiletypeAssociations(app.id, opens.map(String).slice(0, 50));
     log(`app ${name} registered -> ${url}`);
     return { status: 200, body: { ok: true, name, uid: app.uid } };
 }
@@ -621,5 +652,24 @@ extension.post('/unify/internal/mail-domain', OPEN_ROUTE, asInternal(async (req,
     log(`mail domain ${from} -> ${to}:`, moved.length, 'account(s)');
     res.json({ ok: true, moved });
 }));
+
+// Accounts made before a change here keep what they were given then: once
+// Puter is up, tidy every account's taskbar (an app hidden since) and give
+// every person's apps what appGrants lists now (Calendar's sending rights).
+async function catchUpAccounts(attempt = 1) {
+    try {
+        const rows = await db().read('SELECT `id` FROM `user`');
+        let changed = 0;
+        for (const { id } of rows) if (await tidyTaskbar(id).catch(() => false)) changed++;
+        log('taskbars tidied:', changed, 'of', rows.length, 'account(s)');
+        const people = (await allPeople()).filter((r) => r.email && !r.suspended);
+        for (const r of people) await grantApps(await stores().user.getById(r.id)).catch((e) => log(`grants for ${r.username}:`, e.message));
+        log('app permissions brought up to date for', people.length, 'account(s)');
+    } catch (e) {
+        if (attempt < 10) setTimeout(() => catchUpAccounts(attempt + 1), 15_000);
+        else log('accounts not caught up:', e.message);
+    }
+}
+setTimeout(catchUpAccounts, 15_000);
 
 log(`users, apps and directory on api.${DOMAIN}/unify/...; bootstrap administrators: ${[...BOOT_ADMINS].join(', ')}`);

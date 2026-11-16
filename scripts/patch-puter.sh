@@ -12,13 +12,17 @@
 #   OIDCService.js           a Google sign-up is named after its address
 #                            (harsh.rm@gmail.com -> harsh_rm, harsh_rm2 if
 #                            taken) instead of a random name like a guest's.
+#   SuggestedAppsService.js  a double-click opens a file in the suite's app
+#                            that registered its type (suite-apps.json
+#                            "opens") before Puter's own: our PDF, not the
+#                            PDF app that loads from pdf.puter.com.
 set -euo pipefail
 SUITE=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import json,sys; print(json.load(sys.stdin)[\"services\"][\"puter\"][\"image\"])")
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -80,3 +84,33 @@ open(dst, "w").write(text)
 PY
 rm "$OUT/OIDCService.js.orig"
 echo "patched: $OUT/OIDCService.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/services/apps/SuggestedAppsService.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/SuggestedAppsService.js.orig"
+python3 - "$OUT/SuggestedAppsService.js.orig" "$OUT/SuggestedAppsService.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = """        const ordered = isFallback
+            ? [...thirdPartyApps, ...builtinApps]
+            : [...builtinApps, ...thirdPartyApps];"""
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the ordering {text.count(old)} times): review {src}")
+# The suite's apps (the admin extension marks them metadata.unify.suite) lead; the rest keep Puter's order.
+text = text.replace(old, """        const ordered = [...thirdPartyApps.filter(unifySuiteApp), ...(isFallback
+            ? [...thirdPartyApps, ...builtinApps]
+            : [...builtinApps, ...thirdPartyApps])];""")
+text += r"""
+// Unify Works (scripts/patch-puter.sh): an app the suite registered for a
+// file type opens it ahead of Puter's built-in one.
+function unifySuiteApp(app) {
+    try {
+        const meta = typeof app?.metadata === 'string' ? JSON.parse(app.metadata) : app?.metadata;
+        return !!meta?.unify?.suite;
+    } catch { return false; }
+}
+"""
+open(dst, "w").write(text)
+PY
+rm "$OUT/SuggestedAppsService.js.orig"
+echo "patched: $OUT/SuggestedAppsService.js (from $IMAGE)"

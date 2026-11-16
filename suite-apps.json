@@ -5,7 +5,8 @@
     "console list. Add an app here and run scripts/deploy-apps.sh <name>; turn one off for everyone in Admin.",
     "name: Puter's app name (Puter's standard names show on the desktop out of the box). source: a folder of",
     "~/everything/src, or suite:<folder> for one in this project. build: extra build settings; ${...} are filled",
-    "in from the suite's settings (scripts/lib/suite.sh). adminOnly: listed only for administrators."
+    "in from the suite's settings (scripts/lib/suite.sh). adminOnly: listed only for administrators. opens: the",
+    "file types it opens on a double-click in Files or on the desktop, ahead of Puter's own apps."
   ],
   "apps": [
     { "name": "email", "host": "mail", "source": "email", "title": "Email", "description": "Mail for your organisation" },
@@ -18,10 +19,10 @@
       "worker": { "copy": "worker/rooms.js", "to": "chat-server/meetings-rooms.js" },
       "build": { "VITE_ROOMS_ORIGIN": "${CHAT_API}", "VITE_MEETING_LINK_BASE": "${ORIGIN}/app/meetings?m=", "VITE_BRAND_NAME": "${BRAND_NAME}", "VITE_GUEST_JOIN": "false" } },
     { "name": "contacts", "host": "contacts", "source": "contacts", "title": "Contacts", "description": "People and organisations" },
-    { "name": "word-processor", "host": "docs", "source": "documents", "title": "Documents", "description": "Write and edit documents" },
-    { "name": "spreadsheet", "host": "sheets", "source": "spreadsheet", "title": "Spreadsheet", "description": "Spreadsheets and data" },
-    { "name": "presentation", "host": "slides", "source": "presentation", "title": "Presentation", "description": "Slides and presentations" },
-    { "name": "pdf-editor", "host": "pdf", "source": "pdf", "title": "PDF", "description": "View, sign and edit PDFs" },
+    { "name": "word-processor", "host": "docs", "source": "documents", "title": "Documents", "description": "Write and edit documents", "opens": [".docx", ".dotx", ".docm", ".hwp", ".hwpx"] },
+    { "name": "spreadsheet", "host": "sheets", "source": "spreadsheet", "title": "Spreadsheet", "description": "Spreadsheets and data", "opens": [".xlsx", ".xlsm", ".xls", ".xltx", ".xltm", ".csv", ".tsv", ".ods", ".numbers", ".xlsb", ".fods"] },
+    { "name": "presentation", "host": "slides", "source": "presentation", "title": "Presentation", "description": "Slides and presentations", "opens": [".pptx"] },
+    { "name": "pdf-editor", "host": "pdf", "source": "pdf", "title": "PDF", "description": "View, sign and edit PDFs", "opens": [".pdf"] },
     { "name": "notes", "host": "notes", "source": "notes", "title": "Notes", "description": "Notes and notebooks" },
     { "name": "tasks", "host": "tasks", "source": "tasks", "title": "Tasks", "description": "To-dos" },
     { "name": "projects", "host": "projects", "source": "projects", "title": "Projects", "description": "Boards and projects" },

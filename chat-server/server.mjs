@@ -312,13 +312,16 @@ async function send(res, response, head) {
 }
 
 /**
- * A member's role in the organisation's workspace: admin for the suite's
- * administrators and CHAT_ADMINS, member otherwise. Guests and the owner are left alone.
+ * A member's role in the organisation's workspace. The suite's administrators
+ * and CHAT_ADMINS are made admins; `admin` false (an administrator removed in
+ * the Admin app) makes them a member again. Anything else leaves the role as
+ * it is, so someone made an admin inside Chat (its Members list) stays one.
+ * Guests and the owner are left alone.
  */
 async function syncRole(serviceToken, uuid, username, admin) {
   const doc = await globalThis.me.puter.kv.get(`tc:ws:${org.ws}`);
   const role = doc?.members?.[uuid]?.role;
-  const want = admin || CHAT_ADMINS.has(username) ? 'admin' : 'member';
+  const want = admin === true || CHAT_ADMINS.has(username) ? 'admin' : admin === false ? 'member' : role;
   if (!(role === 'admin' || role === 'member') || role === want) return role || null;
   const res = await dispatch(new Request(`http://chat.internal/api/ws/${org.ws}/members/${uuid}/role`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'puter-auth': serviceToken },
@@ -356,7 +359,7 @@ async function internal(req, serviceToken) {
       log(`${username} joined "${ORG_NAME}" (onboarded)`);
     }
     org.joined.add(uuid);
-    const role = await syncRole(serviceToken, uuid, username, body.admin === true);
+    const role = await syncRole(serviceToken, uuid, username, typeof body.admin === 'boolean' ? body.admin : undefined);
     return json(200, { ok: true, workspace: org.ws, role });
   }
   if (req.url === '/internal/offboard') {

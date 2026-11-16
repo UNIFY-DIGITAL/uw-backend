@@ -106,6 +106,8 @@ ua["trialChat"] = trial and env.get("TRIAL_CHAT", "0") == "1"
 # Email sign-up waits for a code by mail: offered only with a relay that can
 # deliver it (below); until then a trial server offers Google and guests.
 ua["emailSignup"] = bool(env.get("SMTP_RELAY_HOST"))
+# Puter's own apps nobody sees: off the app grid and the taskbar, for everyone.
+ua["hiddenPuterApps"] = [n.strip().lower() for n in env.get("HIDDEN_PUTER_APPS", "pdf").split(",") if n.strip()]
 
 # Mail the server sends (sign-up codes, password resets; people's mail to
 # outside addresses on an organisation server): .env SMTP_RELAY_*. Unset: the

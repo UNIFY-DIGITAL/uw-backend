@@ -87,6 +87,7 @@ restart_chat=0
 for name in "${names[@]}"; do
   host=$(app_field "$name" host); source=$(app_field "$name" source); title=$(app_field "$name" title)
   description=$(app_field "$name" description); admin_only=$(app_field "$name" adminOnly)
+  opens=$(app_field "$name" opens)
   out="$SUITE/apps/$host"
   echo "==> $title ($name) -> $(app_url "$host")"
 
@@ -166,10 +167,10 @@ PY
   scripts/set-app-origin.sh "$out" >/dev/null
 
   if [ "${SKIP_REGISTER:-}" != 1 ]; then
-    python3 - "$API" "$(internal_secret)" "$name" "$title" "$description" "$(app_url "$host")/index.html" "${icon:-}" "$admin_only" <<'PY'
+    python3 - "$API" "$(internal_secret)" "$name" "$title" "$description" "$(app_url "$host")/index.html" "${icon:-}" "$admin_only" "${opens:-[]}" <<'PY'
 import base64, json, os, sys, urllib.request
-api, secret, name, title, desc, url, icon, admin_only = sys.argv[1:9]
-body = {"name": name, "title": title, "description": desc, "url": url, "adminOnly": admin_only == "true"}
+api, secret, name, title, desc, url, icon, admin_only, opens = sys.argv[1:10]
+body = {"name": name, "title": title, "description": desc, "url": url, "adminOnly": admin_only == "true", "opens": json.loads(opens)}
 if icon and os.path.exists(icon):
     mime = "image/svg+xml" if icon.endswith(".svg") else "image/png"
     body["icon"] = f"data:{mime};base64," + base64.b64encode(open(icon, "rb").read()).decode()
