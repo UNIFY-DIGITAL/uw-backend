@@ -19,8 +19,10 @@
 set -euo pipefail
 . "$(dirname "$0")/lib/suite.sh"
 DEST="$SUITE/apps/brand-org"
-# The files Puter's desktop uses (config.json gui_params, scripts/configure.sh).
-FILES=(logo.svg logo-white.svg wallpaper.svg)
+# The files Puter's desktop uses (config.json gui_params, scripts/configure.sh),
+# and the PNG icons phones and installs ask for (the desktop's favicons and
+# manifest, routed here by scripts/configure.sh).
+FILES=(logo.svg logo-white.svg wallpaper.svg icon-192.png icon-512.png apple-touch-icon.png)
 
 if [ "${1:-}" = "--reset" ]; then
   rm -rf "$DEST"; echo "brand: the suite's defaults (apps/brand/)"; exit 0
@@ -52,10 +54,12 @@ for f in "${FILES[@]}"; do
     rm -f "$DEST/$f"; echo "  $f: not at the source, default"; continue
   fi
   # Served from our own domain to every signed-in page: a plain SVG with no
-  # script in it, nothing else.
+  # script in it, or a PNG, nothing else.
   if python3 - "$tmp/$f" <<'PY'
 import re, sys
 s = open(sys.argv[1], 'rb').read(2_000_001)
+if sys.argv[1].endswith('.png'):
+    sys.exit(0 if len(s) <= 2_000_000 and s[:8] == b'\x89PNG\r\n\x1a\n' else 1)
 t = s.decode('utf-8', 'replace')
 ok = len(s) <= 2_000_000 and re.search(r'<svg\b', t[:2000], re.I) \
      and not re.search(r'<script\b|<foreignObject\b|\son[a-z]+\s*=|javascript:|<!ENTITY', t, re.I)
@@ -64,7 +68,7 @@ PY
   then
     install -m 644 "$tmp/$f" "$DEST/$f"; echo "  $f: from $src"
   else
-    rm -f "$DEST/$f"; echo "  $f: not a plain SVG, default"
+    rm -f "$DEST/$f"; echo "  $f: not a plain SVG or PNG, default"
   fi
 done
 echo "brand: $(ls "$DEST" | wc -l) file(s) from the organisation in apps/brand-org/, the rest from apps/brand/"

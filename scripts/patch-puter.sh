@@ -8,21 +8,31 @@
 #                            (puter-assets.b-cdn.net): our wallpaper is our own,
 #                            and nothing on the page should reach outside.
 #                            Its tab icon is our logo (brand.<domain>/logo.svg,
-#                            as on the website), not Puter's favicons.
+#                            as on the website), not Puter's favicons; its
+#                            author and link-preview domain are ours.
 #   OIDCService.js           a Google, Microsoft or Apple sign-up is named after its address
 #                            (harsh.rm@gmail.com -> harsh_rm, harsh_rm2 if
 #                            taken) instead of a random name like a guest's.
 #   SuggestedAppsService.js  a double-click opens a file in the suite's app
 #                            that registered its type (suite-apps.json
 #                            "opens") before Puter's own: our PDF, not the
-#                            PDF app that loads from pdf.puter.com.
+#                            PDF app that loads from pdf.puter.com; and
+#                            Puter's hidden apps (config.json
+#                            unifyAdmin.hiddenPuterApps) are never offered.
+#   EmailClient.js           the server's emails name our brand and support
+#                            address and link this server, not puter.com.
+#   HomepageController.js    the desktop page's author is our company, not
+#                            Puter Technologies Inc.
+#   puter.js                 the SDK's dialogs in our apps: our brand, logo
+#                            and links (config.json gui_params, so run
+#                            scripts/configure.sh first).
 set -euo pipefail
 SUITE=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import json,sys; print(json.load(sys.stdin)[\"services\"][\"puter\"][\"image\"])")
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js HomepageController.js puter.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -46,7 +56,16 @@ if len(icons) != 4 or icons != list(range(icons[0], icons[0] + 4)):
     sys.exit(f"patch no longer applies (found {len(icons)} favicon lines, expected 4 together): review {src}")
 indent = lines[icons[0]][: len(lines[icons[0]]) - len(lines[icons[0]].lstrip())]
 lines[icons[0]:icons[0] + 4] = [indent + """<link rel="icon" href="${String(guiParams.brand_logo_url || assetDir + '/favicons/favicon-32x32.png').replace(/"/g, '&quot;')}">"""]
-open(dst, "w").write("\n".join(lines))
+text = "\n".join(lines)
+# The page's link-preview domain: this server, not puter.com (its author: HomepageController.js).
+for old, new in [
+    ('<meta property="twitter:domain" content="puter.com">',
+     """<meta property="twitter:domain" content="${e(String(this.config.domain ?? ''))}">"""),
+]:
+    if text.count(old) != 1:
+        sys.exit(f"patch no longer applies (found {old!r} {text.count(old)} times): review {src}")
+    text = text.replace(old, new)
+open(dst, "w").write(text)
 PY
 rm "$OUT/PuterHomepageService.js.nopreload"
 rm "$OUT/PuterHomepageService.js.orig"
@@ -100,6 +119,12 @@ if text.count(old) != 1:
 text = text.replace(old, """        const ordered = [...thirdPartyApps.filter(unifySuiteApp), ...(isFallback
             ? [...thirdPartyApps, ...builtinApps]
             : [...builtinApps, ...thirdPartyApps])];""")
+old = "const builtinApps = await Promise.all(builtinNames.map((appName) => this.stores.app.getByName(appName)));"
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the built-in lookup {text.count(old)} times): review {src}")
+# Puter's apps the suite hides (config.json unifyAdmin.hiddenPuterApps: those that load
+# from puter.com and other outside sites) are never offered to open a file.
+text = text.replace(old, "const builtinApps = await Promise.all(builtinNames.filter((appName) => !(this.config.unifyAdmin?.hiddenPuterApps ?? []).includes(appName)).map((appName) => this.stores.app.getByName(appName)));")
 text += r"""
 // Unify Works (scripts/patch-puter.sh): an app the suite registered for a
 // file type opens it ahead of Puter's built-in one.
@@ -114,3 +139,129 @@ open(dst, "w").write(text)
 PY
 rm "$OUT/SuggestedAppsService.js.orig"
 echo "patched: $OUT/SuggestedAppsService.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/clients/email/EmailClient.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/EmailClient.js.orig"
+python3 - "$OUT/EmailClient.js.orig" "$OUT/EmailClient.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = "const templates = templates_1.EMAIL_TEMPLATES;"
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the templates line {text.count(old)} times): review {src}")
+text = text.replace(old, "const templates = unifyRebrandTemplates(this.config, templates_1.EMAIL_TEMPLATES);")
+text += r"""
+// Unify Works (scripts/patch-puter.sh): the server's emails (codes, password
+// resets, shares) name our brand and support address, and link this server,
+// not Puter's. Read once, when the templates are compiled at start.
+function unifyRebrandTemplates(config, templates) {
+    const brand = config?.gui_params?.brand_name;
+    if (!brand) return templates;
+    const support = config.support_email || 'support@unify.works';
+    const origin = config.origin || '';
+    const fix = (s) => typeof s !== 'string' ? s : s
+        .replace(/support@puter\.com/g, () => support)
+        .replace(/https:\/\/puter\.com/g, () => origin)
+        .replace(/Puter App Center/g, () => 'App Center')
+        .replace(/The Puter Team/g, () => `The ${brand} team`)
+        .replace(/\bPuter\b/g, () => brand);
+    return Object.fromEntries(Object.entries(templates).map(([name, template]) =>
+        [name, Object.fromEntries(Object.entries(template).map(([k, v]) => [k, fix(v)]))]));
+}
+"""
+open(dst, "w").write(text)
+PY
+rm "$OUT/EmailClient.js.orig"
+echo "patched: $OUT/EmailClient.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/HomepageController.js.orig"
+python3 - "$OUT/HomepageController.js.orig" "$OUT/HomepageController.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = "company: 'Puter Technologies Inc.',"
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the company line {text.count(old)} times): review {src}")
+# The page's author (and the desktop's gui_params.company): ours, from config.json gui_params.
+text = text.replace(old, "company: String(this.config.gui_params?.company || this.config.gui_params?.brand_name || 'Puter Technologies Inc.'),")
+open(dst, "w").write(text)
+PY
+rm "$OUT/HomepageController.js.orig"
+echo "patched: $OUT/HomepageController.js (from $IMAGE)"
+
+# puter.js, the SDK our apps load from js.<domain>: its sign-in and notice
+# dialogs name our brand, show our logo and link our site, source code, terms
+# and dashboard, not Puter's (no Docs or Discord links). The values come from
+# config.json gui_params, written by scripts/configure.sh: run this again after
+# changing BRAND_NAME, WEBSITE_URL, SOURCE_URL, TERMS_URL or PRIVACY_URL.
+FILE=/opt/puter/src/puter-js/dist/puter.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/puter.js.orig"
+python3 - "$OUT/puter.js.orig" "$OUT/puter.js" "$SUITE/puter/config/config.json" <<'PY'
+import html, json, re, sys
+src, dst, config = sys.argv[1:4]
+text = open(src).read()
+c = json.load(open(config))
+g = c.get("gui_params", {})
+v = {
+    "brand": g.get("brand_name") or "",
+    "origin": c.get("origin") or "",
+    "website": g.get("website_url") or c.get("origin") or "",
+    "source": g.get("source_url") or "",
+    "terms": g.get("terms_url") or "",
+    "privacy": g.get("privacy_url") or "",
+    "logo": g.get("brand_logo_url") or "",
+}
+if not v["brand"] or not v["origin"]:
+    sys.exit(f"{config} has no gui_params.brand_name or origin: run scripts/configure.sh first")
+for k, s in v.items():
+    if re.search(r"[`\\]|\$\{", s):
+        sys.exit(f"gui_params value for {k} has a character the SDK's strings cannot hold: {s!r}")
+    v[k] = html.escape(s, quote=True)   # no quotes left: safe in any of the bundle's strings
+
+missing = []
+def sub(old, new, required=True):
+    # The text sits in a template literal (as written) or, after minifying, in
+    # a quoted string with its quotes escaped: either form, kept as found.
+    global text
+    for esc in (lambda s: s, lambda s: s.replace('"', '\\"'), lambda s: s.replace("'", "\\'")):
+        n = text.count(esc(old))
+        if n:
+            text = text.replace(esc(old), esc(new))
+            return
+    if required:
+        sys.exit(f"patch no longer applies (did not find {old[:70]!r}...): review {src}")
+    missing.append(old[:50])
+
+terms = (f"""By clicking 'Continue' you agree to {v['brand']}'s <a href="{v['terms']}" target="_blank">Terms of Service</a> and <a href="{v['privacy']}" target="_blank">Privacy Policy</a>"""
+         if v["terms"] and v["privacy"] else "")
+sub("""By clicking 'Continue' you agree to Puter's <a href="https://puter.com/terms" target="_blank">Terms of Service</a> and <a href="https://puter.com/privacy" target="_blank">Privacy Policy</a>""", terms)
+sub("This website uses Puter to bring you", f"This website uses {v['brand']} to bring you")
+sub('<a href="https://puter.com?utm_source=sdk-splash"', f'<a href="{v["website"]}"')
+sub('<a href="https://docs.puter.com" target="_blank">Docs</a><span style="margin:10px; color: #CCC;">|</span>', "")
+sub('<a href="https://github.com/heyPuter/puter/" target="_blank">Github</a><span style="margin:10px; color: #CCC;">|</span>',
+    f'<a href="{v["source"]}" target="_blank">Source code</a>' if v["source"] else "")
+sub('<a href="https://discord.com/invite/PQcx7Teh8u" target="_blank">Discord</a>', "")
+sub("Go to Puter.com", f"Go to {v['brand']}")
+sub("https://puter.com/dashboard/", f"{v['origin']}/dashboard/")
+sub("Puter.js Error: Unsupported Origin", "Error: Unsupported Origin", required=False)
+sub(" Puter.js signs a page in by its origin", f" {v['brand']} signs a page in by its origin", required=False)
+sub("To use Puter.js here:", "To sign in here:", required=False)
+sub("Or load Puter.js from the parent page instead", "Or load the SDK from the parent page instead", required=False)
+sub("Sending email to addresses outside Puter requires", f"Sending email to addresses outside {v['brand']} requires", required=False)
+
+# The email-confirmation dialog's button opens puter.com: this server.
+text, n = re.subn(r"""(open\(\s*)(["'`])https://puter\.com\2""", lambda m: f"{m[1]}{m[2]}{v['origin']}{m[2]}", text)
+if n != 1:
+    sys.exit(f"patch no longer applies (found open('https://puter.com') {n} times): review {src}")
+# The dialog's logo (Puter's, inline on a blue square): ours, which brings its own background.
+text, n = re.subn(r"""width: 40px; height: 40px; margin: 0 auto; border-radius: 8px; background-color: #2210d7; padding: 15px;(\\?")( src=)(\\?")data:image/svg\+xml;base64,[A-Za-z0-9+/=]+\\?\"""",
+                  lambda m: f"width: 70px; height: 70px; margin: 0 auto; border-radius: 8px;{m[1]}{m[2]}{m[3]}{v['logo']}{m[3]}", text)
+if n != 1 or not v["logo"]:
+    sys.exit(f"patch no longer applies (found Puter's dialog logo {n} times, or no brand_logo_url): review {src}")
+open(dst, "w").write(text)
+if missing:
+    print(f"  puter.js: not found (left as they were): {'; '.join(missing)}")
+PY
+rm "$OUT/puter.js.orig"
+echo "patched: $OUT/puter.js (from $IMAGE)"
