@@ -141,26 +141,52 @@ for k, v in json.loads(sys.argv[1]).items():
       sed -i '/plausible\.io/d' "$f"                                                           # no analytics off the premises
     done
     icon="$dir/icon-128.png"
-    # The product name people read: Puter's, in the apps as written for puter.com,
-    # becomes the organisation's brand ("Puter Mail" -> "Unify Works Mail", "your
-    # Puter account" -> "your Unify Works account"). Whole words only (code says
-    # getPuter, PuterPeer), and never the technical names (Puter.js, Puter SDK)
-    # or Calendar's file signature (-//Calendar//Puter//EN).
-    python3 - "$out" "$BRAND_NAME" <<'PY'
+    # What people read in the apps as written for puter.com (pages, code, the
+    # home-screen manifest) becomes the organisation's: the product name ("Puter
+    # Mail" -> "Unify Works Mail", "The Puter SDK failed to load" -> "The Unify
+    # Works SDK ..."), and links to Puter's sites ("Powered by", About, booking
+    # pages, link previews) -> our website, this server, the app's own address.
+    # Whole words only (code says getPuter, PuterPeer); file-format identifiers
+    # stay, as files already saved carry them (-//Calendar//Puter//EN,
+    # schemas.puter.com, puter.com/spreadsheet/relationships).
+    python3 - "$out" "$BRAND_NAME" "${WEBSITE_URL:-https://unify.works}" "$ORIGIN" "$(app_url "$host")" \
+      "${TERMS_URL:-}" "${PRIVACY_URL:-}" "$SDK_URL" \
+      "${SOURCE_URL:-https://github.com/UNIFY-DIGITAL/uw-backend/tree/stagev1}" <<'PY'
 import os, re, sys
-root, brand = sys.argv[1], sys.argv[2]
-word = re.compile(r"(?<![-/\w.$])Puter(?![\w$]|\.js|//| SDK| script)")
+root, brand, website, origin, app_url, terms, privacy, sdk, source = sys.argv[1:10]
+q = r"(?=[`'\"])"   # the URL ends where its string does
+swaps = [
+    # Puter's repositories ("Open GitHub" in Records, Signatures' About) -> the source of what we run.
+    (re.compile(r"https://github\.com/HeyPuter/[\w.-]*[\w-]"), source),
+    # puter.com's SDK in code too (messages, service workers' cache rules) -> ours, as in the pages above.
+    (re.compile(r"https://js\.puter\.com/v2/"), sdk),
+    (re.compile(r"https://js\.puter\.com(/?)" + q), lambda m: sdk.rsplit("/v2/", 1)[0] + m[1]),
+    (re.compile(r"Puter Technologies Inc\."), brand),
+    (re.compile(r"(?<![-/\w.$])Puter(?:\.js\b| SDK\b)"), f"{brand} SDK"),
+    (re.compile(r"(?<![-/\w.$])Puter(?![\w$]|//)"), brand),
+    (re.compile(r"https://developer\.puter\.com/?" + q), website),
+    (re.compile(r"https://puter\.com/terms/?" + q), terms or website),
+    (re.compile(r"https://puter\.com/privacy/?" + q), privacy or website),
+    (re.compile(r"https://puter\.com/app/"), f"{origin}/app/"),
+    # A trailing "/" stays: code may append a path to it ("https://puter.com/" + "sign.html").
+    (re.compile(r"https://(?:www\.)?puter\.com(/?)" + q), lambda m: website.rstrip("/") + m[1]),
+]
+# Pages only: link previews and canonical addresses on <app>.puter.com -> this app's address.
+page_swaps = [(re.compile(r"https://(?!js\.)[a-z0-9-]+\.puter\.com/"), app_url.rstrip("/") + "/")]
 changed = 0
 for d, _, files in os.walk(root):
     for f in files:
-        if not f.endswith((".js", ".html")): continue
+        # The web-app manifest too: the name a phone gives the app saved to its home screen.
+        if not f.endswith((".js", ".html", ".webmanifest")) and f not in ("manifest.json", "mcp.json"): continue
         p = os.path.join(d, f)
         text = open(p, encoding="utf-8").read()
-        new, n = word.subn(brand, text)
-        if n:
-            open(p, "w", encoding="utf-8").write(new)
+        new = text
+        for rx, to in swaps + (page_swaps if f.endswith(".html") else []):
+            new, n = rx.subn(to if callable(to) else (lambda m, to=to: to), new)
             changed += n
-print(f"   branded: {changed} mention(s) of the product name")
+        if new != text:
+            open(p, "w", encoding="utf-8").write(new)
+print(f"   branded: {changed} mention(s) of Puter's name and sites")
 PY
   fi
   if [ -f "$icon" ] && [ "$icon" != "$out/unify-icon.${icon##*.}" ]; then cp "$icon" "$out/unify-icon.${icon##*.}"; fi
