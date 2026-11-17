@@ -35,6 +35,8 @@ services:
       - ./puter/patches/EmailClient.js:/opt/puter/dist/src/backend/clients/email/EmailClient.js:ro,z
       # Confirmation codes expire (same script).
       - ./puter/patches/AuthController.js:/opt/puter/dist/src/backend/controllers/auth/AuthController.js:ro,z
+      # AI: the suite's model for apps that ask for one this server does not have (same script).
+      - ./puter/patches/ChatCompletionDriver.js:/opt/puter/dist/src/backend/drivers/ai-chat/ChatCompletionDriver.js:ro,z
       - ./puter/patches/HomepageController.js:/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js:ro,z
       - ./puter/patches/puter.js:/opt/puter/src/puter-js/dist/puter.js:ro,z
       # The suite's app list, for the admin extension (Admin console, App Center, apps button).

@@ -23,6 +23,8 @@
 #                            address and link this server, not puter.com;
 #                            our wording from email-templates/ where given.
 #   AuthController.js        a confirmation code expires (EMAIL_CODE_MINUTES).
+#   ChatCompletionDriver.js  AI: an app that names no model, or one this server
+#                            does not have, gets the suite's (AI_MODEL).
 #   HomepageController.js    the desktop page's author is our company, not
 #                            Puter Technologies Inc.
 #   puter.js                 the SDK's dialogs in our apps: our brand, logo
@@ -34,7 +36,7 @@ IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import 
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js HomepageController.js puter.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js ChatCompletionDriver.js HomepageController.js puter.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -239,6 +241,34 @@ open(dst, "w").write(text)
 PY
 rm "$OUT/AuthController.js.orig"
 echo "patched: $OUT/AuthController.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/drivers/ai-chat/ChatCompletionDriver.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/ChatCompletionDriver.js.orig"
+python3 - "$OUT/ChatCompletionDriver.js.orig" "$OUT/ChatCompletionDriver.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = """        let intendedProvider = args.provider || '';
+        if (!args.model && !intendedProvider) {
+            intendedProvider = 'azure-openai';
+        }"""
+# Twice: a completion, and its token count.
+if text.count(old) != 2:
+    sys.exit(f"patch no longer applies (found the default-provider lines {text.count(old)} times, expected 2): review {src}")
+text = text.replace(old, """        let intendedProvider = args.provider || '';
+        // Unify Works (scripts/patch-puter.sh): no model named, or one this server
+        // does not have (an app asking for Claude or GPT): the suite's, config.json unifyAI.model.
+        if (this.config.unifyAI?.model && (!args.model || !(await this.#resolveLoadedModel(args.model, intendedProvider)))) {
+            args.model = this.config.unifyAI.model;
+            intendedProvider = '';
+        }
+        if (!args.model && !intendedProvider) {
+            intendedProvider = 'azure-openai';
+        }""")
+open(dst, "w").write(text)
+PY
+rm "$OUT/ChatCompletionDriver.js.orig"
+echo "patched: $OUT/ChatCompletionDriver.js (from $IMAGE)"
 
 FILE=/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js
 docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/HomepageController.js.orig"

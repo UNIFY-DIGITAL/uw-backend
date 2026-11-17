@@ -223,6 +223,19 @@ if aws.get("secret_key", "CHANGE_ME") in ("", "CHANGE_ME"):
     aws["secret_key"] = secrets.token_hex(32)
 aws.setdefault("region", "us-east-1")
 c["peers"] = {"signaller_url": env["SIGNAL"], "fallback_ice": [{"urls": f"stun:{env['TURN_HOST']}:3478"}]}
+# AI: Google Gemini (.env GEMINI_API_KEY, from Google AI Studio), and the suite's
+# model (.env AI_MODEL, gemini-2.5-flash by default), used when an app names none
+# or one this server does not have (scripts/patch-puter.sh, ChatCompletionDriver.js).
+ai = c.setdefault("providers", {})
+if env.get("GEMINI_API_KEY", "CHANGE_ME") not in ("", "CHANGE_ME"):
+    ai["gemini"] = {"apiKey": env["GEMINI_API_KEY"]}
+else:
+    ai.pop("gemini", None)
+model = env.get("AI_MODEL") or ("gemini-2.5-flash" if "gemini" in ai else "")
+if model:
+    c["unifyAI"] = {"model": model}
+else:
+    c.pop("unifyAI", None)
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
     json.dump(c, f, indent=2)
