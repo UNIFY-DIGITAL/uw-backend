@@ -177,10 +177,10 @@ function unifyRebrandTemplates(config, templates) {
         .replace(/support@puter\.com/g, () => support)
         .replace(/https:\/\/puter\.com/g, () => origin)
         .replace(/Puter App Center/g, () => 'App Center')
-        // One signature on every email: "Thanks, The <brand> Team".
-        .replace(/<p>Sincerely,<\/p>\s*<p>Puter<\/p>/g, () => `<p>Thanks,<br>The ${brand} Team</p>`)
-        .replace(/Best,<br \/>\s*The Puter Team/g, () => `Thanks,<br />\nThe ${brand} Team`)
-        .replace(/The Puter Team/g, () => `The ${brand} Team`)
+        // One signature on every email: "Thanks, <brand> Team".
+        .replace(/<p>Sincerely,<\/p>\s*<p>Puter<\/p>/g, () => `<p>Thanks,<br>${brand} Team</p>`)
+        .replace(/Best,<br \/>\s*The Puter Team/g, () => `Thanks,<br />\n${brand} Team`)
+        .replace(/The Puter Team/g, () => `${brand} Team`)
         .replace(/\bPuter\b/g, () => brand);
     const fill = (s) => typeof s !== 'string' ? s : s
         .replace(/\{\{\s*brand\s*\}\}/g, () => brand)
