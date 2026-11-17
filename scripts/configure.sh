@@ -119,6 +119,9 @@ g["disable_temp_users"] = not trial
 ua = c.setdefault("unifyAdmin", {})
 ua["mode"] = kind
 ua["trialChat"] = trial and env.get("TRIAL_CHAT", "0") == "1"
+# Mail to outside addresses from a trial server (.env TRIAL_OUTSIDE_MAIL=1): off
+# by default, as anyone who signs up could then send as the mail domain.
+ua["trialOutsideMail"] = trial and env.get("TRIAL_OUTSIDE_MAIL", "0") == "1"
 # Email sign-up waits for a code by mail: offered only with a relay that can
 # deliver it (below); until then a trial server offers Google and guests.
 ua["emailSignup"] = bool(env.get("SMTP_RELAY_HOST"))

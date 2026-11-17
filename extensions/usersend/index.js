@@ -53,7 +53,9 @@ const LOCAL_DOMAINS = new Set(
 );
 const SEND = config.userEmailSend ?? {};
 const MAX_RECIPIENTS = Number(SEND.maxRecipients) || 50;
-const TRIAL = config.unifyAdmin?.mode === 'trial';
+// A trial server keeps mail between its own accounts, unless it is opened up
+// ("unifyAdmin.trialOutsideMail", .env TRIAL_OUTSIDE_MAIL=1).
+const TRIAL = config.unifyAdmin?.mode === 'trial' && config.unifyAdmin?.trialOutsideMail !== true;
 const RELAY_OPTIONS = TRIAL ? null : SEND.relay ?? config.email ?? null;
 const SHARED_DOMAIN = SEND.sharedDomain === true && !!RELAY_OPTIONS;
 let relay = null;
