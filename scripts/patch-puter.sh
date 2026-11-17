@@ -20,7 +20,9 @@
 #                            Puter's hidden apps (config.json
 #                            unifyAdmin.hiddenPuterApps) are never offered.
 #   EmailClient.js           the server's emails name our brand and support
-#                            address and link this server, not puter.com.
+#                            address and link this server, not puter.com;
+#                            our wording from email-templates/ where given.
+#   AuthController.js        a confirmation code expires (EMAIL_CODE_MINUTES).
 #   HomepageController.js    the desktop page's author is our company, not
 #                            Puter Technologies Inc.
 #   puter.js                 the SDK's dialogs in our apps: our brand, logo
@@ -32,7 +34,7 @@ IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import 
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js HomepageController.js puter.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js HomepageController.js puter.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -150,29 +152,93 @@ old = "const templates = templates_1.EMAIL_TEMPLATES;"
 if text.count(old) != 1:
     sys.exit(f"patch no longer applies (found the templates line {text.count(old)} times): review {src}")
 text = text.replace(old, "const templates = unifyRebrandTemplates(this.config, templates_1.EMAIL_TEMPLATES);")
+old = "const compiled = this.compiledTemplates[template];"
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the send lookup {text.count(old)} times): review {src}")
+# When each confirmation code goes out, for its expiry (AuthController.js, below).
+text = text.replace(old, "if (template === 'email_verification_code' && values?.code) unifyCodeSent(to, values.code);\n        " + old)
 text += r"""
 // Unify Works (scripts/patch-puter.sh): the server's emails (codes, password
 // resets, shares) name our brand and support address, and link this server,
-// not Puter's. Read once, when the templates are compiled at start.
+// not Puter's; a template in the suite's email-templates/ (config.json
+// "unifyEmailTemplates", scripts/configure.sh) replaces Puter's wording, with
+// {{brand}}, {{support}} and {{minutes}} (how long a code lasts) filled in.
+// Read once, when the templates are compiled at start.
 function unifyRebrandTemplates(config, templates) {
     const brand = config?.gui_params?.brand_name;
     if (!brand) return templates;
     const support = config.support_email || 'support@unify.works';
     const origin = config.origin || '';
+    const minutes = String(config.unifyAdmin?.emailCodeMinutes ?? 10);
     const fix = (s) => typeof s !== 'string' ? s : s
         .replace(/support@puter\.com/g, () => support)
         .replace(/https:\/\/puter\.com/g, () => origin)
         .replace(/Puter App Center/g, () => 'App Center')
         .replace(/The Puter Team/g, () => `The ${brand} team`)
         .replace(/\bPuter\b/g, () => brand);
-    return Object.fromEntries(Object.entries(templates).map(([name, template]) =>
-        [name, Object.fromEntries(Object.entries(template).map(([k, v]) => [k, fix(v)]))]));
+    const fill = (s) => typeof s !== 'string' ? s : s
+        .replace(/\{\{\s*brand\s*\}\}/g, () => brand)
+        .replace(/\{\{\s*support\s*\}\}/g, () => support)
+        .replace(/\{\{\s*minutes\s*\}\}/g, () => minutes);
+    const ours = config.unifyEmailTemplates ?? {};
+    return Object.fromEntries(Object.entries(templates).map(([name, template]) => {
+        const own = ours[name];
+        let parts = template;
+        if (own) {
+            // Our wording replaces Puter's part by part; a new HTML body drops Puter's text part.
+            parts = { subject: own.subject ?? template.subject, html: own.html ?? template.html };
+            const textPart = own.text ?? (own.html ? undefined : template.text);
+            if (textPart) parts.text = textPart;
+        }
+        return [name, Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, fix(fill(v))]))];
+    }));
+}
+
+// When each confirmation code was sent, by address and code; AuthController.js
+// refuses one older than config.json unifyAdmin.emailCodeMinutes (Puter's own
+// codes never expire). In memory: after a restart, earlier codes count as expired.
+function unifyCodeSent(to, code) {
+    const sent = (globalThis.__unifyCodesSent ??= new Map());
+    const now = Date.now();
+    for (const [key, at] of sent) if (now - at > 24 * 3600 * 1000) sent.delete(key);
+    sent.set(`${String(to).trim().toLowerCase()}|${code}`, now);
 }
 """
 open(dst, "w").write(text)
 PY
 rm "$OUT/EmailClient.js.orig"
 echo "patched: $OUT/EmailClient.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/controllers/auth/AuthController.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/AuthController.js.orig"
+python3 - "$OUT/AuthController.js.orig" "$OUT/AuthController.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = """            if (!user.email_confirm_code ||
+                String(user.email_confirm_code) !== String(code)) {"""
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the code check {text.count(old)} times): review {src}")
+# A code older than its lifetime is refused like a wrong one: the desktop says so, and the person asks for a new one.
+text = text.replace(old, """            if (!user.email_confirm_code ||
+                String(user.email_confirm_code) !== String(code) ||
+                unifyCodeExpired(this.config, user.email, code)) {""")
+text += r"""
+// Unify Works (scripts/patch-puter.sh): a confirmation code lasts
+// config.json unifyAdmin.emailCodeMinutes (.env EMAIL_CODE_MINUTES, 10 by
+// default; 0: no limit, Puter's own behaviour). Its send time is kept by
+// EmailClient.js; a code with none (sent before a restart) counts as expired.
+function unifyCodeExpired(config, email, code) {
+    const minutes = Number(config?.unifyAdmin?.emailCodeMinutes ?? 10);
+    if (!(minutes > 0)) return false;
+    const at = globalThis.__unifyCodesSent?.get(`${String(email).trim().toLowerCase()}|${code}`);
+    return !at || Date.now() - at > minutes * 60 * 1000;
+}
+"""
+open(dst, "w").write(text)
+PY
+rm "$OUT/AuthController.js.orig"
+echo "patched: $OUT/AuthController.js (from $IMAGE)"
 
 FILE=/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js
 docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/HomepageController.js.orig"

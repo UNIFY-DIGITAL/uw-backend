@@ -33,6 +33,8 @@ services:
       - ./puter/patches/SuggestedAppsService.js:/opt/puter/dist/src/backend/services/apps/SuggestedAppsService.js:ro,z
       # Emails and the SDK's dialogs with our brand, support address and links (same script).
       - ./puter/patches/EmailClient.js:/opt/puter/dist/src/backend/clients/email/EmailClient.js:ro,z
+      # Confirmation codes expire (same script).
+      - ./puter/patches/AuthController.js:/opt/puter/dist/src/backend/controllers/auth/AuthController.js:ro,z
       - ./puter/patches/HomepageController.js:/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js:ro,z
       - ./puter/patches/puter.js:/opt/puter/src/puter-js/dist/puter.js:ro,z
       # The suite's app list, for the admin extension (Admin console, App Center, apps button).

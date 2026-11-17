@@ -149,6 +149,27 @@ if relay:
 # mailcow keeps support@ and no-reply@ of the same domain): people's mail to an
 # address of the domain with no account here goes to the relay, not "no such user".
 c.setdefault("userEmailSend", {})["sharedDomain"] = env.get("MAIL_DOMAIN_SHARED") == "1"
+# How long a confirmation code lasts (.env EMAIL_CODE_MINUTES; 0: no limit).
+ua["emailCodeMinutes"] = int(env.get("EMAIL_CODE_MINUTES") or 10)
+# Our wording for the server's emails (scripts/patch-puter.sh, EmailClient.js):
+# email-templates/<Puter's template name>.html, its first line "Subject: ...",
+# then the HTML; <name>.txt, the plain-text part. A template not there keeps
+# Puter's wording, branded. See email-templates/README.md.
+own = {}
+tdir = f"{suite}/email-templates"
+for f in sorted(os.listdir(tdir)) if os.path.isdir(tdir) else []:
+    name, ext = os.path.splitext(f)
+    if ext not in (".html", ".txt"):
+        continue
+    body = open(os.path.join(tdir, f), encoding="utf-8").read()
+    if ext == ".html":
+        first, _, rest = body.partition("\n")
+        if not first.lower().startswith("subject:"):
+            sys.exit(f"email-templates/{f}: the first line must be 'Subject: ...'")
+        own.setdefault(name, {}).update(subject=first.split(":", 1)[1].strip(), html=rest.strip() + "\n")
+    else:
+        own.setdefault(name, {})["text"] = body.strip() + "\n"
+c["unifyEmailTemplates"] = own
 
 # Sign in with Google (.env GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET, an OAuth
 # client for <proto>://<domain>/auth/oidc/callback/{login,signup,revalidate}). Unset: no Google button.
