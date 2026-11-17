@@ -29,6 +29,11 @@
     { "name": "whiteboard", "host": "whiteboard", "source": "whiteboard", "title": "Whiteboard", "description": "Boards for sketching, diagrams and planning" },
     { "name": "signatures", "host": "sign", "source": "signatures", "title": "Signatures", "description": "Prepare documents for signing and sign them" },
     { "name": "records", "host": "records", "source": "records", "title": "Records", "description": "Tables, views and forms for your data" },
+    { "name": "accounting", "host": "accounting", "source": "accounting", "title": "Accounting", "description": "Bookkeeping: accounts, journal, bank reconciliation and reports" },
+    { "name": "invoices", "host": "invoices", "source": "invoicing", "title": "Invoices", "description": "Quotes, invoices and payments, sent from your own address",
+      "build": { "VITE_SEND_VIA_EMAIL": "true", "VITE_SHARE_DOMAIN": "off" } },
+    { "name": "crm", "host": "crm", "source": "crm", "title": "CRM", "description": "Contacts, companies, deals and pipeline" },
+    { "name": "help-desk", "host": "helpdesk", "source": "help-desk", "title": "Help Desk", "description": "Support tickets and customers (one person; team access is not available yet)" },
     { "name": "app-center", "host": "appcenter", "source": "suite:app-center", "title": "App Center", "description": "Find and open the apps of your organisation" },
     { "name": "admin", "host": "admin", "source": "suite:admin-console", "title": "Admin", "description": "Users and apps of your organisation", "adminOnly": true }
   ]

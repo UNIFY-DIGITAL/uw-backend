@@ -208,6 +208,8 @@ const appGrants = (row) => {
     return {
         email: [`fs:${mailbox}:read`, `fs:${mailbox}:write`],
         calendar: [`fs:${mailbox}:read`, `fs:${mailbox}:write`, `user:${row.uuid}:email:read`, 'events:background'],
+        // Invoices sends a quote or invoice from the person's own address (its Sent copy).
+        invoices: [`fs:${mailbox}:write`],
     };
 };
 
