@@ -6,8 +6,9 @@
  *
  * 1. An apps button (the 9-dot grid) at the top of the screen, beside the
  *    desktop's own handle: on the desktop and over every open app, since apps
- *    run inside the desktop page. It opens a searchable panel of the
- *    organisation's apps (/unify/apps, the admin extension); picking one opens it in a
+ *    run inside the desktop page. It opens a searchable panel of the person's
+ *    apps: the organisation's (/unify/apps, the admin extension) without those
+ *    they removed in the Dashboard's Apps tab; picking one opens it in a
  *    NEW TAB (/app/<name>), so switching apps is switching tabs.
  * 2. App tiles on the desktop (Apps and Home) open in a new tab too, instead
  *    of replacing the desktop in this one. Puter already does that for
@@ -18,6 +19,8 @@
  *   "unify_app_switcher": true    the apps button and panel
  *   "unify_apps_new_tab": true    desktop tiles open in a new tab
  */
+
+import { REMOVED_APPS_KV_KEY, parseRemovedApps } from '../UI/Dashboard/removedApps.js';
 
 const setting = (key) => (window.gui_params || {})[key] !== false;
 const appUrl = (name) => `${location.origin}/app/${encodeURIComponent(name)}`;
@@ -83,7 +86,16 @@ async function loadApps () {
     const res = await fetch(`${window.api_origin}/unify/apps`, { headers: auth, cache: 'no-store' });
     if ( res.ok ) {
         const { apps: list } = await res.json();
-        return list.map((a) => ({ name: a.name, title: a.title || a.name, icon: a.icon || window.icons?.['app.svg'] || '' }))
+        // The person's own list: apps they removed in the Dashboard's Apps tab
+        // stay out (opening one from App Center puts it back there, and here).
+        let removed = new Set();
+        try {
+            removed = parseRemovedApps(await window.puter.kv.get(REMOVED_APPS_KV_KEY));
+        } catch {
+            /* unreadable: show every app rather than none */
+        }
+        return list.filter((a) => ! removed.has(a.name))
+            .map((a) => ({ name: a.name, title: a.title || a.name, icon: a.icon || window.icons?.['app.svg'] || '' }))
             .sort((a, b) => a.title.localeCompare(b.title));
     }
     // Without the admin extension: every app this account has.
