@@ -23,6 +23,7 @@
 #                            address and link this server, not puter.com;
 #                            our wording from email-templates/ where given.
 #   AuthController.js        a confirmation code expires (EMAIL_CODE_MINUTES).
+#   SignupService.js         sign-up always mails the code the desktop asks for.
 #   ChatCompletionDriver.js  AI: an app that names no model, or one this server
 #                            does not have, gets the suite's (AI_MODEL).
 #   HomepageController.js    the desktop page's author is our company, not
@@ -36,7 +37,7 @@ IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import 
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js ChatCompletionDriver.js HomepageController.js puter.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js SignupService.js ChatCompletionDriver.js HomepageController.js puter.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -176,7 +177,10 @@ function unifyRebrandTemplates(config, templates) {
         .replace(/support@puter\.com/g, () => support)
         .replace(/https:\/\/puter\.com/g, () => origin)
         .replace(/Puter App Center/g, () => 'App Center')
-        .replace(/The Puter Team/g, () => `The ${brand} team`)
+        // One signature on every email: "Thanks, The <brand> Team".
+        .replace(/<p>Sincerely,<\/p>\s*<p>Puter<\/p>/g, () => `<p>Thanks,<br>The ${brand} Team</p>`)
+        .replace(/Best,<br \/>\s*The Puter Team/g, () => `Thanks,<br />\nThe ${brand} Team`)
+        .replace(/The Puter Team/g, () => `The ${brand} Team`)
         .replace(/\bPuter\b/g, () => brand);
     const fill = (s) => typeof s !== 'string' ? s : s
         .replace(/\{\{\s*brand\s*\}\}/g, () => brand)
@@ -241,6 +245,23 @@ open(dst, "w").write(text)
 PY
 rm "$OUT/AuthController.js.orig"
 echo "patched: $OUT/AuthController.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/services/user/SignupService.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/SignupService.js.orig"
+python3 - "$OUT/SignupService.js.orig" "$OUT/SignupService.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = "(body.send_confirmation_code ?? true)"
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the code-or-link choice {text.count(old)} times): review {src}")
+# Sign-up always mails the code: the desktop's sign-up asks for a link
+# (send_confirmation_code false) yet shows the code window, so the two disagreed.
+text = text.replace(old, "(true /* Unify Works (scripts/patch-puter.sh): always the code */)")
+open(dst, "w").write(text)
+PY
+rm "$OUT/SignupService.js.orig"
+echo "patched: $OUT/SignupService.js (from $IMAGE)"
 
 FILE=/opt/puter/dist/src/backend/drivers/ai-chat/ChatCompletionDriver.js
 docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/ChatCompletionDriver.js.orig"
