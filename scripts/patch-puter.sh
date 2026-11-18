@@ -28,6 +28,8 @@
 #                            does not have, gets the suite's (AI_MODEL).
 #   GeminiChatProvider.js    Gemini gets a turn's tool calls back in its own order
 #                            (its thought signature rides on the first).
+#   Messages.js              a tool call's arguments an app sends back are read as
+#                            an object, not encoded twice (Gemini refuses that).
 #   HomepageController.js    the desktop page's author is our company, not
 #                            Puter Technologies Inc.
 #   puter.js                 the SDK's dialogs in our apps: our brand, logo
@@ -39,7 +41,7 @@ IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import 
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js SignupService.js ChatCompletionDriver.js GeminiChatProvider.js HomepageController.js puter.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js SignupService.js ChatCompletionDriver.js GeminiChatProvider.js Messages.js HomepageController.js puter.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -314,6 +316,38 @@ open(dst, "w").write(text)
 PY
 rm "$OUT/GeminiChatProvider.js.orig"
 echo "patched: $OUT/GeminiChatProvider.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/drivers/ai-chat/utils/Messages.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/Messages.js.orig"
+python3 - "$OUT/Messages.js.orig" "$OUT/Messages.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = "input: tool_call.function.arguments,"
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the tool-call arguments line {text.count(old)} times): review {src}")
+# Unify Works: an app sends a tool call's arguments back as the OpenAI format
+# has them, a JSON string. Kept as that string, Puter encodes it as JSON again
+# on the way out ("\"{...}\""), and Gemini refuses the request ("invalid
+# argument", 400 with no body when streamed). Read as the object it is.
+text = text.replace(old, "input: unifyToolArguments(tool_call.function.arguments),")
+text += r"""
+// Unify Works (scripts/patch-puter.sh): a tool call's arguments as an object:
+// the JSON string the OpenAI format carries is parsed; one that is not JSON
+// stays as it came.
+function unifyToolArguments(args) {
+    if (typeof args !== 'string') return args;
+    try {
+        return args.trim() ? JSON.parse(args) : {};
+    } catch {
+        return args;
+    }
+}
+"""
+open(dst, "w").write(text)
+PY
+rm "$OUT/Messages.js.orig"
+echo "patched: $OUT/Messages.js (from $IMAGE)"
 
 FILE=/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js
 docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/HomepageController.js.orig"

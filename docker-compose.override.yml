@@ -41,6 +41,8 @@ services:
       - ./puter/patches/ChatCompletionDriver.js:/opt/puter/dist/src/backend/drivers/ai-chat/ChatCompletionDriver.js:ro,z
       # Gemini 3: a turn's tool calls go back in order, its thought signature on the first (same script).
       - ./puter/patches/GeminiChatProvider.js:/opt/puter/dist/src/backend/drivers/ai-chat/providers/gemini/GeminiChatProvider.js:ro,z
+      # Tool-call arguments sent back by an app: read as an object, not encoded twice (same script).
+      - ./puter/patches/Messages.js:/opt/puter/dist/src/backend/drivers/ai-chat/utils/Messages.js:ro,z
       - ./puter/patches/HomepageController.js:/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js:ro,z
       - ./puter/patches/puter.js:/opt/puter/src/puter-js/dist/puter.js:ro,z
       # The suite's app list, for the admin extension (Admin console, App Center, apps button).
