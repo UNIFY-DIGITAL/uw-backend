@@ -185,16 +185,30 @@ new MutationObserver(() => {
 }).observe(document.querySelector('title') || document.head, { childList: true, subtree: true, characterData: true });
 
 // 4. Menus: no "Developer" / "Developers" item (Puter's developer site, added
-//    by the user menu and the dashboard's). Puter's own extension adds its
-//    item to the list in the same event, before or after this one: the list
-//    is filtered now and whenever it is replaced.
+//    by the user menu and the dashboard's), and in the user menus (desktop and
+//    dashboard) "Open source on GitHub" above "Contact Us", to source_url.
+//    Puter's own extension adds its item to the list in the same event, before
+//    or after this one: the list is filtered now and whenever it is replaced.
 const isDeveloperItem = (item) => item && typeof item === 'object' && (item.id === 'go_to_developer_site'
     || /developer\.puter\.com/.test(String(item.onClick || '') + String(item.action || '')));
+const USER_MENUS = ['user-options-menu', 'dashboard-user-menu'];
+const isContactItem = (item) => item && typeof item === 'object'
+    && (item.id === 'contact_us' || (typeof window.i18n === 'function' && item.html === window.i18n('contact_us')));
+const sourceItem = () => ({
+    id: 'unify_source',
+    html: 'Open source on GitHub',
+    onClick: () => openWindow.call(window, params().source_url, '_blank', 'noopener'),
+});
 window.addEventListener('ctxmenu-will-open', (event) => {
     const options = event.detail?.options;
     if ( !brand() || !options || !Array.isArray(options.items) ) return;
+    const withSource = (items) => {
+        if ( !USER_MENUS.includes(options.id) || !params().source_url || items.some(item => item?.id === 'unify_source') ) return items;
+        const at = items.findIndex(isContactItem);
+        return at === -1 ? items : [...items.slice(0, at), sourceItem(), ...items.slice(at)];
+    };
     const clean = (items) => {
-        const kept = items.filter(item => !isDeveloperItem(item));
+        const kept = withSource(items.filter(item => !isDeveloperItem(item)));
         // No separator left first, last or doubled by a removed item.
         return kept.filter((item, i) => item !== '-' || (i > 0 && i < kept.length - 1 && kept[i - 1] !== '-'));
     };
