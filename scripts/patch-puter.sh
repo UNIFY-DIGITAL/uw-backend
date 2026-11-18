@@ -26,6 +26,8 @@
 #   SignupService.js         sign-up always mails the code the desktop asks for.
 #   ChatCompletionDriver.js  AI: an app that names no model, or one this server
 #                            does not have, gets the suite's (AI_MODEL).
+#   GeminiChatProvider.js    Gemini gets a turn's tool calls back in its own order
+#                            (its thought signature rides on the first).
 #   HomepageController.js    the desktop page's author is our company, not
 #                            Puter Technologies Inc.
 #   puter.js                 the SDK's dialogs in our apps: our brand, logo
@@ -37,7 +39,7 @@ IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import 
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js SignupService.js ChatCompletionDriver.js HomepageController.js puter.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js SignupService.js ChatCompletionDriver.js GeminiChatProvider.js HomepageController.js puter.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -290,6 +292,28 @@ open(dst, "w").write(text)
 PY
 rm "$OUT/ChatCompletionDriver.js.orig"
 echo "patched: $OUT/ChatCompletionDriver.js (from $IMAGE)"
+
+FILE=/opt/puter/dist/src/backend/drivers/ai-chat/providers/gemini/GeminiChatProvider.js
+docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/GeminiChatProvider.js.orig"
+python3 - "$OUT/GeminiChatProvider.js.orig" "$OUT/GeminiChatProvider.js" <<'PY'
+import sys
+src, dst = sys.argv[1:3]
+text = open(src).read()
+old = """    preservesToolCallOrder(model) {
+        return models_js_1.GEMINI_NATIVE_MODELS.has(model.id);
+    }"""
+if text.count(old) != 1:
+    sys.exit(f"patch no longer applies (found the tool-call order rule {text.count(old)} times): review {src}")
+# Unify Works: a turn's parallel tool calls go back to Gemini in the order it made them, for every
+# Gemini model. Puter kept the order only for its native ones; reversed, the thought signature
+# Gemini 3 puts on the first call lands on the last, and Google refuses the request (400).
+text = text.replace(old, """    preservesToolCallOrder(model) {
+        return true; // Unify Works (scripts/patch-puter.sh): every Gemini model, see there
+    }""")
+open(dst, "w").write(text)
+PY
+rm "$OUT/GeminiChatProvider.js.orig"
+echo "patched: $OUT/GeminiChatProvider.js (from $IMAGE)"
 
 FILE=/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js
 docker run --rm --entrypoint cat "$IMAGE" "$FILE" > "$OUT/HomepageController.js.orig"

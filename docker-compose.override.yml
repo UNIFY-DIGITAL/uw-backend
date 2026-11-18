@@ -39,6 +39,8 @@ services:
       - ./puter/patches/SignupService.js:/opt/puter/dist/src/backend/services/user/SignupService.js:ro,z
       # AI: the suite's model for apps that ask for one this server does not have (same script).
       - ./puter/patches/ChatCompletionDriver.js:/opt/puter/dist/src/backend/drivers/ai-chat/ChatCompletionDriver.js:ro,z
+      # Gemini 3: a turn's tool calls go back in order, its thought signature on the first (same script).
+      - ./puter/patches/GeminiChatProvider.js:/opt/puter/dist/src/backend/drivers/ai-chat/providers/gemini/GeminiChatProvider.js:ro,z
       - ./puter/patches/HomepageController.js:/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js:ro,z
       - ./puter/patches/puter.js:/opt/puter/src/puter-js/dist/puter.js:ro,z
       # The suite's app list, for the admin extension (Admin console, App Center, apps button).
