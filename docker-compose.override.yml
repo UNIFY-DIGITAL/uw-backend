@@ -45,6 +45,10 @@ services:
       - ./puter/patches/Messages.js:/opt/puter/dist/src/backend/drivers/ai-chat/utils/Messages.js:ro,z
       - ./puter/patches/HomepageController.js:/opt/puter/dist/src/backend/controllers/homepage/HomepageController.js:ro,z
       - ./puter/patches/puter.js:/opt/puter/src/puter-js/dist/puter.js:ro,z
+      # Dev Center: SDK from this server, no Puter docs or social links, sites on our domain (same script).
+      - ./puter/patches/dev-center-index.html:/opt/puter/src/dev-center/index.html:ro,z
+      - ./puter/patches/dev-center-websites.js:/opt/puter/src/dev-center/js/websites.js:ro,z
+      - ./puter/patches/dev-center-apps.js:/opt/puter/src/dev-center/js/apps.js:ro,z
       # The suite's app list, for the admin extension (Admin console, App Center, apps button).
       - ./suite-apps.json:/etc/puter/suite-apps.json:ro,z
       # The desktop rebuilt with our branding extension (scripts/build-desktop.sh,

@@ -35,13 +35,16 @@
 #   puter.js                 the SDK's dialogs in our apps: our brand, logo
 #                            and links (config.json gui_params, so run
 #                            scripts/configure.sh first).
+#   dev-center-*             Dev Center: the SDK from this server; no Puter docs
+#                            or social links, GitHub to our source; websites
+#                            shown at <name>.site.<domain>, not puter.site.
 set -euo pipefail
 SUITE=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=$(cd "$SUITE" && docker compose config --format json | python3 -c "import json,sys; print(json.load(sys.stdin)[\"services\"][\"puter\"][\"image\"])")
 OUT="$SUITE/puter/patches"
 mkdir -p "$OUT"
 # A start before this ran leaves Docker's root-owned folder where a file goes.
-for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js SignupService.js ChatCompletionDriver.js GeminiChatProvider.js Messages.js HomepageController.js puter.js; do
+for name in PuterHomepageService.js OIDCService.js SuggestedAppsService.js EmailClient.js AuthController.js SignupService.js ChatCompletionDriver.js GeminiChatProvider.js Messages.js HomepageController.js puter.js dev-center-index.html dev-center-websites.js dev-center-apps.js; do
   if [ -d "$OUT/$name" ]; then
     . "$SUITE/scripts/lib/suite.sh"   # ALPINE_IMAGE
     docker run --rm -v "$OUT:/p" "$ALPINE_IMAGE" rm -rf "/p/$name"
@@ -440,3 +443,61 @@ if missing:
 PY
 rm "$OUT/puter.js.orig"
 echo "patched: $OUT/puter.js (from $IMAGE)"
+
+# Dev Center (the builtin app at /builtin/dev-center): loads the SDK from this
+# server, not js.puter.com; no links to Puter's docs, Discord, X or Reddit, its
+# GitHub link goes to our source (gui_params.source_url); our brand and support
+# address; and a website's address is on this server (static_hosting_domain,
+# <name>.site.<domain>), not <name>.puter.site. Values from config.json, as for
+# puter.js above.
+DC=/opt/puter/src/dev-center
+for f in index.html js/websites.js js/apps.js; do
+  docker run --rm --entrypoint cat "$IMAGE" "$DC/$f" > "$OUT/dev-center-$(basename "$f").orig"
+done
+python3 - "$OUT" "$SUITE/puter/config/config.json" <<'PY'
+import html, json, re, sys
+out, config = sys.argv[1:3]
+c = json.load(open(config))
+g = c.get("gui_params", {})
+brand = html.escape(g.get("brand_name") or "", quote=True)
+sdk = html.escape(c.get("gui_puterjs_bundle") or "", quote=True)
+source = html.escape(g.get("source_url") or "", quote=True)
+support = html.escape(g.get("support_email") or "", quote=True)
+website = html.escape(g.get("website_url") or c.get("origin") or "", quote=True)
+if not (brand and sdk and support):
+    sys.exit(f"{config} has no gui_params.brand_name, support_email or gui_puterjs_bundle: run scripts/configure.sh first")
+
+def edit(name, steps):
+    src = f"{out}/dev-center-{name}.orig"
+    text = open(src).read()
+    for pattern, new, count in steps:
+        text, n = re.subn(pattern, new, text, flags=re.S)
+        if n != count:
+            sys.exit(f"patch no longer applies (found {pattern[:60]!r} {n} times, not {count}): review {src}")
+    open(f"{out}/dev-center-{name}", "w").write(text)
+
+github = (f'<li class="no-hover"><a href="{source}" class="social-link"\\1' if source else "")
+edit("index.html", [
+    (re.escape('<script src="https://js.puter.com/v2/"></script>'), f'<script src="{sdk}"></script>', 1),
+    # "Developer Documentation" (developer.puter.com): gone.
+    (r'<ul class="sidebar-nav">\s*<li class="no-hover"[^>]*><a href="https://developer\.puter\.com/".*?</ul>', "", 1),
+    # Social links: GitHub to our source; Discord, X and Reddit gone.
+    (r'<li class="no-hover"><a href="https://github\.com/HeyPuter/puter" class="social-link"(.*?</li>)', github, 1),
+    (r'\s*<li class="no-hover"><a href="https://(dsc\.gg/puter|x\.com/HeyPuter|reddit\.com/r/puter)".*?</li>', "", 3),
+    (r'(support|hey)@puter\.com', support, 6),
+    (r'https://puter\.com/incentive-program-terms', website, 2),
+    (r'\bPuter\b', brand, 5),
+])
+edit("websites.js", [
+    (re.escape('href="https://${html_encode(website.subdomain)}.puter.site"'),
+     'href="${protocol}://${html_encode(website.subdomain)}.${static_hosting_domain}"', 1),
+    (re.escape('.puter.site'), '.${static_hosting_domain}', 4),
+])
+edit("apps.js", [
+    (re.escape('`https://${hostname}.puter.site`'), '`${protocol}://${hostname}.${static_hosting_domain}`', 1),
+])
+PY
+for f in index.html websites.js apps.js; do
+  rm "$OUT/dev-center-$f.orig"
+  echo "patched: $OUT/dev-center-$f (from $IMAGE)"
+done
